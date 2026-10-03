@@ -1,0 +1,21 @@
+name: openarm-dev_devcontainer
+services:
+  dev:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    init: true
+    volumes:
+      - ..:/workspaces/openarm-dev
+    working_dir: /workspaces/openarm-dev
+    ports:
+      - "127.0.0.1:6080:6080"
+    shm_size: 1gb
+    cap_add:
+      - NET_ADMIN
+    environment:
+      DISPLAY: :1
+      LIBGL_ALWAYS_SOFTWARE: "1"
+      QT_X11_NO_MITSHM: "1"
+      ROS_AUTOMATIC_DISCOVERY_RANGE: LOCALHOST
+    command: /usr/local/bin/openarm-desktop
