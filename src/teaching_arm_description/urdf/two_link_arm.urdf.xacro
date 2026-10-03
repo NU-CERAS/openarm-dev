@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<robot name="teaching_arm" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!-- SI units: meters, kilograms, radians. Positive Y rotation bends toward -Z. -->
+  <xacro:arg name="length1" default="0.6"/>
+  <xacro:arg name="length2" default="0.4"/>
+  <xacro:property name="l1" value="$(arg length1)"/>
+  <xacro:property name="l2" value="$(arg length2)"/>
+  <xacro:property name="width" value="0.06"/>
+  <material name="blue"><color rgba="0.15 0.45 0.9 1"/></material>
+  <material name="orange"><color rgba="1 0.5 0.1 1"/></material>
+  <material name="gray"><color rgba="0.4 0.4 0.4 1"/></material>
+
+  <!-- A box's inertia is about its center of mass, not the joint origin. -->
+  <xacro:macro name="arm_link" params="name length mass color">
+    <link name="${name}">
+      <visual>
+        <origin xyz="${length / 2} 0 0"/>
+        <geometry><box size="${length} ${width} ${width}"/></geometry>
+        <material name="${color}"/>
+      </visual>
+      <collision>
+        <origin xyz="${length / 2} 0 0"/>
+        <geometry><box size="${length} ${width} ${width}"/></geometry>
+      </collision>
+      <inertial>
+        <origin xyz="${length / 2} 0 0"/>
+        <mass value="${mass}"/>
+        <inertia ixx="${mass * (width**2 + width**2) / 12}" ixy="0" ixz="0"
+                 iyy="${mass * (length**2 + width**2) / 12}" iyz="0"
+                 izz="${mass * (length**2 + width**2) / 12}"/>
+      </inertial>
+    </link>
+  </xacro:macro>
+
+  <!-- The root is fixed for Pinocchio; it has no free-floating base coordinates. -->
+  <link name="base_link">
+    <visual><origin xyz="0 0 -0.05"/>
+      <geometry><box size="0.15 0.15 0.1"/></geometry><material name="gray"/>
+    </visual>
+  </link>
+  <xacro:arm_link name="link1" length="${l1}" mass="1.0" color="blue"/>
+  <xacro:arm_link name="link2" length="${l2}" mass="0.6" color="orange"/>
+  <link name="tool0"/>
+  <joint name="shoulder_joint" type="revolute">
+    <parent link="base_link"/><child link="link1"/>
+    <origin xyz="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-3.141592653589793" upper="3.141592653589793" effort="20" velocity="2"/>
+  </joint>
+  <joint name="elbow_joint" type="revolute">
+    <parent link="link1"/><child link="link2"/>
+    <origin xyz="${l1} 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-3.141592653589793" upper="3.141592653589793" effort="10" velocity="2"/>
+  </joint>
+  <joint name="tool_joint" type="fixed">
+    <parent link="link2"/><child link="tool0"/><origin xyz="${l2} 0 0"/>
+  </joint>
+</robot>

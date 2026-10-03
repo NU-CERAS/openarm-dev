@@ -22,8 +22,8 @@ g = pin.computeGeneralizedGravity(model, data, q)
 assert np.all(np.isfinite(g))
 PY
 
-echo "OpenArm packages"
-for p in openarm_description openarm_bringup; do
+echo "OpenArm and teaching packages"
+for p in openarm_description openarm_bringup teaching_arm_description ros_teaching_examples pinocchio_teaching_examples; do
   ros2 pkg prefix "$p" >/dev/null 2>&1 && pass "$p built" || fail "$p not found (run: cb && cs)"
 done
 if ros2 pkg prefix openarm_description >/dev/null 2>&1; then
