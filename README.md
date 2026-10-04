@@ -39,9 +39,21 @@ an exercise, expected results, and discussion questions. The guide includes
 
 ## Starting without VS Code
 
+Install and start **Docker**, clone this repository, then run from its root:
+
 ```bash
-docker compose -f .devcontainer/compose.yaml up -d --build
-docker compose -f .devcontainer/compose.yaml exec dev bash scripts/post-create.sh
+bash scripts/setup.sh
+```
+
+This starts the container and downloads `openarm_description` and `openarm_ros2`
+into `src/vendor/` using `workspace.repos`, then installs dependencies, builds the
+workspace, and runs the health check. You can rerun it after pulling changes;
+existing upstream checkouts are preserved. VS Code runs the same container setup
+automatically when creating the Dev Container.
+
+To open a container terminal after setup:
+
+```bash
 docker compose -f .devcontainer/compose.yaml exec dev bash
 ```
 
