@@ -1,0 +1,67 @@
+<?xml version="1.0"?>
+<!--
+  OpenArm v1.0 bimanual robot description for MuJoCo + ros2_control.
+
+  - Links/joints come from openarm_description (the same model RViz and the labs use).
+  - Its own ros2_control block is left off (ros2_control:=false by default) and
+    replaced below with the MuJoCo hardware plugin.
+  - Joint names here must match the joint names in mjcf/openarm_bimanual.xml.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="openarm">
+
+  <xacro:arg name="headless" default="false"/>
+
+  <xacro:include filename="$(find openarm_description)/assets/robot/openarm_v1.0/urdf/openarm_v10.urdf.xacro"/>
+
+  <!-- Actuated joint: position command, position/velocity/effort state -->
+  <xacro:macro name="mj_joint" params="name initial:=0.0">
+    <joint name="${name}">
+      <command_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">${initial}</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </xacro:macro>
+
+  <!-- Second finger: coupled to finger_joint1 in MuJoCo, state only -->
+  <xacro:macro name="mj_passive_joint" params="name initial:=0.0">
+    <joint name="${name}">
+      <state_interface name="position">
+        <param name="initial_value">${initial}</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:macro name="mj_arm" params="side">
+    <xacro:mj_joint name="openarm_${side}_joint1"/>
+    <xacro:mj_joint name="openarm_${side}_joint2"/>
+    <xacro:mj_joint name="openarm_${side}_joint3"/>
+    <xacro:mj_joint name="openarm_${side}_joint4" initial="1.570796"/>
+    <xacro:mj_joint name="openarm_${side}_joint5"/>
+    <xacro:mj_joint name="openarm_${side}_joint6"/>
+    <xacro:mj_joint name="openarm_${side}_joint7"/>
+    <xacro:mj_joint name="openarm_${side}_finger_joint1" initial="0.044"/>
+    <xacro:mj_passive_joint name="openarm_${side}_finger_joint2" initial="0.044"/>
+  </xacro:macro>
+
+  <ros2_control name="OpenArmMujocoSystem" type="system">
+    <hardware>
+      <plugin>mujoco_ros2_control/MujocoSystemInterface</plugin>
+      <param name="mujoco_model">$(find openarm_mujoco_sim)/mjcf/scene.xml</param>
+      <!-- Start from the "home" keyframe in the MJCF (elbows bent, grippers open) -->
+      <param name="initial_keyframe">home</param>
+      <param name="sim_speed_factor">1.0</param>
+      <param name="headless">$(arg headless)</param>
+      <!-- The MJCF has two scene cameras; don't start the ROS camera-image renderer for them.
+           Its extra OpenGL context crashes the D3D12 (WSL GPU) driver, and nothing uses the images. -->
+      <param name="auto_register_cameras">false</param>
+    </hardware>
+    <xacro:mj_arm side="left"/>
+    <xacro:mj_arm side="right"/>
+  </ros2_control>
+
+</robot>
