@@ -25,7 +25,7 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
         #set all 16 DOF actuators to 0
         data.ctrl[:] = 0
         #sinusoidal force on 1st joint of right arm
-        data.ctrl[0] = 5.0 * np.sin(2 * data.time) 
+        data.ctrl[0] = 2.0 * np.sin(1*data.time) 
 
         # 5. Advance the physics simulation
         mujoco.mj_step(model, data)
