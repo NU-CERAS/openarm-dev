@@ -5,7 +5,7 @@ import time
 
 # 1. Load the robot
 model = mujoco.MjModel.from_xml_path(
-    "mujoco/Bimanual Openarm v0.3/openarm_bimanual.mjcf.xml"
+    "mujoco/models/bimanual.xml"
 )
 data = mujoco.MjData(model)
 

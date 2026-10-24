@@ -4,8 +4,10 @@ Standalone MuJoCo simulations and controller examples for OpenARM. Runs locally,
 
 ## Structure
 
-- `v0.3/` — OpenARM MJCF models and required `meshes/` assets
-- `Robot Controller Examples/` — Python controllers (see each script for details)
+- `models/` — OpenARM v0.3 MJCF models (`single_arm.xml`, `bimanual.xml`) and required `meshes/` assets
+- `examples/` — Python controllers (`actuator_motion.py`, `sim_to_real.py`; see each script for details)
+
+Use lowercase snake_case for new files and folders, with descriptive names instead of example numbers.
 
 ## Setup
 
@@ -24,18 +26,18 @@ From the repository root, for example:
 **macOS** (use `mjpython` for the passive viewer):
 
 ```bash
-mjpython "mujoco/Robot Controller Examples/example1: basic actuator motion.py"
+mjpython mujoco/examples/actuator_motion.py
 ```
 
 **Linux / Windows:**
 
 ```bash
-python "mujoco/Robot Controller Examples/example1: basic actuator motion.py"
+python mujoco/examples/actuator_motion.py
 ```
 
 **VS Code:** Select the virtual environment as the Python interpreter, then use **Tasks: Run Task → Run MuJoCo** if the task is configured. Open the desired script before running the task.
 
-Keep the `v0.3/meshes/` directory with the model XML files; the models refer to these assets by relative path.
+Keep the `models/meshes/` directory with the model XML files; the models refer to these assets by relative path.
 
 ## Notes
 

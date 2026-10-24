@@ -1,0 +1,6 @@
+[submodule "src/vendor/openarm_description"]
+	path = src/vendor/openarm_description
+	url = https://github.com/enactic/openarm_description.git
+[submodule "src/vendor/openarm_ros2"]
+	path = src/vendor/openarm_ros2
+	url = https://github.com/enactic/openarm_ros2.git

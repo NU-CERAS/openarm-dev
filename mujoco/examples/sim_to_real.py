@@ -1,10 +1,10 @@
 """
-Sim-to-real mirror: runs the same simulation as Example1 and makes the real
+Sim-to-real mirror: runs the same simulation as actuator_motion.py and makes the real
 left arm follow the simulated left_rev1 joint over CAN (openarm_can).
 
 Run from the repository root:
-    python "mujoco/Robot Controller Examples/Example2: Sim-to-Real Mirror.py"          # read-only
-    python "mujoco/Robot Controller Examples/Example2: Sim-to-Real Mirror.py" --live   # moves the arm
+    python mujoco/examples/sim_to_real.py          # read-only
+    python mujoco/examples/sim_to_real.py --live   # moves the arm
 
 Without --live the motors are never enabled: the script only reads the real
 arm's joint positions and prints what it would command.
@@ -54,9 +54,9 @@ def check_motors(arm):
     return np.array(positions)
 
 
-# 1. Load the robot (same model as Example1)
+# 1. Load the robot (same model as actuator_motion.py)
 model = mujoco.MjModel.from_xml_path(
-    "mujoco/Bimanual Openarm v0.3/openarm_bimanual.mjcf.xml"
+    "mujoco/models/bimanual.xml"
 )
 data = mujoco.MjData(model)
 sim_qpos_adr = [model.jnt_qposadr[model.joint(f"left_rev{j}").id] for j in range(1, 8)]
@@ -96,7 +96,7 @@ try:
 
             start_t = time.time()
 
-            # 4. Same motor command as Example1, applied to left_rev1 instead of right_rev1
+            # 4. Same motor command as actuator_motion.py, applied to left_rev1 instead of right_rev1
             data.ctrl[:] = 0
             data.ctrl[J1_ACTUATOR] = 4.0 * np.sin(2 * data.time)
 

@@ -1,3 +1,4 @@
 {
-    "python-envs.defaultEnvManager": "ms-python.python:system"
+    "python-envs.defaultEnvManager": "ms-python.python:system",
+    "cmake.sourceDirectory": "/Users/bradylin/Documents/Projects/Club & Lab/openarm-dev/installation/windows-wsl"
 }
