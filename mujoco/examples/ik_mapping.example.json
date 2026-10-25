@@ -1,0 +1,16 @@
+{
+  "verified": false,
+  "note": "EXAMPLE ONLY: q_model = sign * q_motor + offset_rad. Verify every joint in the physical reference pose and direction and both interface assignments before setting verified=true. jaw_qpos_m must match the stationary gripper geometry. Reverify after setting any new motor zero. No firmware settings are changed by the IK script.",
+  "right": {
+    "interface": "can0",
+    "sign": [1, 1, 1, 1, 1, 1, 1],
+    "offset_rad": [0, 0, 0, 0, 0, 0, 0],
+    "jaw_qpos_m": [0, 0]
+  },
+  "left": {
+    "interface": "can1",
+    "sign": [1, 1, 1, 1, 1, 1, 1],
+    "offset_rad": [0, 0, 0, 0, 0, 0, 0],
+    "jaw_qpos_m": [0, 0]
+  }
+}
