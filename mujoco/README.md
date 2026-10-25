@@ -11,15 +11,32 @@ Use lowercase snake_case for new files and folders, with descriptive names inste
 
 ## Setup
 
-Install Python and create a virtual environment:
+Create and activate the conda environment from the repository root:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install mujoco numpy
+conda env create -f environment.yml
+conda activate mujoco
 ```
 
 ## Run
+
+Interactive camera reach demo and camera controls:
+
+```bash
+conda activate mujoco
+openarm-reach
+```
+
+Drum environment preview:
+
+```bash
+openarm-reach --scene pickup
+openarm-reach --scene strike
+```
+
+See [simulation-demo.md](../docs/simulation-demo.md) for scene settings and verification commands.
+
+For CUDA planning setup, residual drumming RL configuration, ROS 2 execution interfaces, and MP4 recording, see [planning-rl-sim2real.md](../docs/planning-rl-sim2real.md).
 
 From the repository root, for example:
 
