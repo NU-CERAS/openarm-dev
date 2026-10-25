@@ -1,7 +1,0 @@
-# Source dependencies not available from apt. Import into the same workspace:
-#   vcs import src < src/openarm_mujoco_sim/openarm_mujoco_sim.repos
-repositories:
-  openarm_description:
-    type: git
-    url: https://github.com/enactic/openarm_description.git
-    version: main

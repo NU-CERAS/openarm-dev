@@ -1,0 +1,110 @@
+{
+  "robot": "v1.0",
+  "arm": "right",
+  "model": "robots/v1.0/models/scene.xml",
+  "hardware_reviewed": false,
+  "max_speed": 0.3,
+  "feedback_timeout": 0.1,
+  "max_tracking_error": 0.25,
+  "max_temperature": 60,
+  "joints": [
+    {
+      "name": "openarm_right_joint1",
+      "limits": [
+        -1.396263,
+        3.490659
+      ],
+      "home": 0.0,
+      "sign": 1,
+      "send_id": 1,
+      "recv_id": 17,
+      "motor_type": "DM8009",
+      "kp": 10.0,
+      "kd": 1.0
+    },
+    {
+      "name": "openarm_right_joint2",
+      "limits": [
+        -0.17453267320510335,
+        3.3161253267948965
+      ],
+      "home": 0.0,
+      "sign": 1,
+      "send_id": 2,
+      "recv_id": 18,
+      "motor_type": "DM8009",
+      "kp": 10.0,
+      "kd": 1.0
+    },
+    {
+      "name": "openarm_right_joint3",
+      "limits": [
+        -1.570796,
+        1.570796
+      ],
+      "home": 0.0,
+      "sign": 1,
+      "send_id": 3,
+      "recv_id": 19,
+      "motor_type": "DM4340",
+      "kp": 10.0,
+      "kd": 1.0
+    },
+    {
+      "name": "openarm_right_joint4",
+      "limits": [
+        0.0,
+        2.443461
+      ],
+      "home": 1.57,
+      "sign": 1,
+      "send_id": 4,
+      "recv_id": 20,
+      "motor_type": "DM4340",
+      "kp": 10.0,
+      "kd": 1.0
+    },
+    {
+      "name": "openarm_right_joint5",
+      "limits": [
+        -1.570796,
+        1.570796
+      ],
+      "home": 0.0,
+      "sign": 1,
+      "send_id": 5,
+      "recv_id": 21,
+      "motor_type": "DM4310",
+      "kp": 10.0,
+      "kd": 1.0
+    },
+    {
+      "name": "openarm_right_joint6",
+      "limits": [
+        -0.785398,
+        0.785398
+      ],
+      "home": 0.0,
+      "sign": 1,
+      "send_id": 6,
+      "recv_id": 22,
+      "motor_type": "DM4310",
+      "kp": 10.0,
+      "kd": 1.0
+    },
+    {
+      "name": "openarm_right_joint7",
+      "limits": [
+        -1.570796,
+        1.570796
+      ],
+      "home": 0.0,
+      "sign": 1,
+      "send_id": 7,
+      "recv_id": 23,
+      "motor_type": "DM4310",
+      "kp": 10.0,
+      "kd": 1.0
+    }
+  ]
+}

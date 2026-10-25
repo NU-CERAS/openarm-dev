@@ -1,0 +1,3 @@
+# Keep NumPy 1.x ABI compatibility with Ubuntu's ROS binary Python extensions.
+numpy>=1.26,<2
+mujoco>=3.3,<4

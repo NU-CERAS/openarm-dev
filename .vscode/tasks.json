@@ -3,9 +3,21 @@
   "tasks": [
     {
       "label": "Run MuJoCo",
-      "type": "shell",
-      "command": "\"$(dirname '${command:python.interpreterPath}')/mjpython\"",
-      "args": ["${file}"],
+      "type": "process",
+      "command": "${command:python.interpreterPath}",
+      "args": [
+        "${workspaceFolder}/scripts/sim.py"
+      ],
+      "osx": {
+        "command": "/bin/bash",
+        "args": [
+          "-c",
+          "exec \"$(dirname \"$1\")/mjpython\" \"$2\"",
+          "openarm",
+          "${command:python.interpreterPath}",
+          "${workspaceFolder}/scripts/sim.py"
+        ]
+      },
       "options": {
         "cwd": "${workspaceFolder}"
       },

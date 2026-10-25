@@ -1,4 +1,4 @@
 {
-    "python-envs.defaultEnvManager": "ms-python.python:system",
-    "cmake.sourceDirectory": "/Users/bradylin/Documents/Projects/Club & Lab/openarm-dev/installation/windows-wsl"
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "cmake.sourceDirectory": "${workspaceFolder}/src/ros/openarm_mujoco_sim"
 }

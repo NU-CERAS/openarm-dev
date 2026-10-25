@@ -1,0 +1,16 @@
+openarm_mujoco_sim
+Copyright 2026 Thomas McGuire
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This repository includes files from enactic/openarm_mujoco
+(https://github.com/enactic/openarm_mujoco), Copyright 2025 Enactic, Inc.,
+licensed under the Apache License, Version 2.0:
+
+  ../../../robots/v1.0/models/openarm_bimanual.xml   (from v1/openarm_bimanual.xml at commit 0e050bb)
+  ../../../robots/v1.0/models/meshes/                (from v1/meshes/ at commit 0e050bb)
+
+launch/openarm_mujoco.launch.py is adapted from
+mujoco_ros2_control_demos/launch/01_basic_robot.launch.py
+(https://github.com/ros-controls/mujoco_ros2_control), Copyright PAL Robotics S.L.,
+licensed under the Apache License, Version 2.0.
