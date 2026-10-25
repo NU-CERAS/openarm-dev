@@ -3,6 +3,8 @@
 A pair of humanoid robotic arms built on [OpenArm](https://github.com/enactic/openarm), designed to interact with art: playing instruments, and more. Built by CERAS @ Northwestern University.
 
 > **Status:** Early development. This README is preliminary and will evolve with the project.
+>
+> To ssh into Brady's computer to interface with CAN transceiver: ssh brady@10.105.182.237, pw: 12345678
 
 ---
 
