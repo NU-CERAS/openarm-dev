@@ -24,6 +24,30 @@ def test_camera_ray_recovers_table_coordinates():
         assert np.linalg.norm(surface[:2] - [0.52, -0.32]) < 0.004
 
 
+def test_camera_unprojects_object_surface_above_table():
+    # 桌面上的物体必须被点到它自己的表面，而不是被投影到桌面平面。
+    box = dict(name="probe_box", position=[0.50, -0.20, 0.33], half_size=[0.04, 0.04, 0.03])
+    with ReachSimulation(obstacles=(box,)) as sim, OverheadCamera(sim.model, 640, 480) as camera:
+        frame = camera.capture(sim.data)
+        top = np.array([0.50, -0.20, 0.36])
+        pixel = camera.project(top, frame)
+        surface = camera.unproject(*pixel, frame)
+        np.testing.assert_allclose(surface, top, atol=0.002)
+        # 桌面平面假设会把同一个像素解到 z=table_height，偏差 6 cm。
+        assert surface[2] - sim.table_height > 0.04
+
+
+def test_depth_buffer_resolves_points_without_a_physics_snapshot():
+    # 真机换深度相机时没有 MjData 可供求交，深度通道必须能独立工作。
+    with ReachSimulation() as sim, OverheadCamera(sim.model, 640, 480, include_depth=True) as camera:
+        frame = camera.capture(sim.data)
+        assert frame.depth is not None and frame.depth.shape == (frame.rgb.shape[0], frame.rgb.shape[1])
+        pixel = camera.project(np.array([0.40, 0.0, sim.table_height]), frame)
+        with OverheadCamera(sim.model, 640, 480) as depth_only:
+            point = depth_only.unproject(*pixel, frame)
+        assert np.linalg.norm(point - [0.40, 0.0, sim.table_height]) < 0.004
+
+
 @pytest.mark.parametrize("arm", ["right", "left"])
 def test_pixel_target_is_reached_by_physics(arm):
     with ReachSimulation() as sim, OverheadCamera(sim.model, 640, 480) as camera:
