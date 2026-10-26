@@ -26,9 +26,9 @@ Current scene settings:
 
 The camera uses the midpoint of official `camera_head_left` and `camera_head_right`, located at `(0.223, ±0.0315, 1.45)` m in the Cell frame. Their midpoint is `(0.223, 0, 1.45)`. To preserve the pose relative to the robot mounting, the demo subtracts the official mounting position `(0.185, 0, 1.34)` and adds the local mounting position `(0, 0, 0.698)`, giving `(0.038, 0, 0.808)` m. The official orientation is retained. Rendering displays the full image without resizing or compression. Source: [official Cell model](https://github.com/enactic/openarm_mujoco/blob/a3c8a57ec15d385e3c1dbd3fd090ee486b7f258c/v2/cell/cell.xml).
 
-The GUI defaults to cuRobo motion planning. From the repository root, install planning dependencies and generate collision assets with `bash projects/cartesian_console/scripts/setup_curobo.sh`. cuRobo plans a collision-aware trajectory, which is retimed, checked against MuJoCo collision meshes, and executed through the position actuators. Model-based gravity feedforward retains actuator effort limits. Motion is evaluated from the actual simulated TCP state. `--planner mink` selects the IK/interpolation controller explicitly.
+The GUI defaults to CPU OMPL motion planning with MuJoCo collision checks. `--planner curobo` selects the optional CUDA planner; install it and generate collision assets with `bash projects/cartesian_console/scripts/setup_curobo.sh`. Trajectories are retimed and executed through the position actuators. Model-based gravity feedforward retains actuator effort limits. Motion is evaluated from the actual simulated TCP state. `--planner mink` selects direct IK/interpolation.
 
-Image clicks specify position. A reachable orientation is selected using mink, and cuRobo plans the resulting pose. Full installation, RL, execution-interface, and recording details are in [planning-rl-sim2real.md](planning-rl-sim2real.md).
+Image clicks specify position. mink selects a reachable goal configuration, then the selected backend plans a path. See [motion planning](motion-planning.md) and the [synchronization console](sync-console.md) for setup and execution.
 
 ## Drum environment preview
 
@@ -85,7 +85,7 @@ openarm-reach --scene drum --smoke-test
 openarm-reach --scene strike --smoke-test
 ```
 
-Tests use real MuJoCo rendering, IK, actuators, and contacts. The reach GUI check generates a mouse-click event and checks TCP convergence. The pickup GUI check invokes the reference-controller button and checks physical lift and finger contacts. No visual inspection is performed by the assistant.
+Tests use real MuJoCo rendering, IK, actuators, and contacts. The reach GUI check generates a mouse-click event and checks TCP convergence. The pickup GUI check invokes the reference-controller button and checks physical lift and finger contacts.
 
 ## VLM tool interface
 

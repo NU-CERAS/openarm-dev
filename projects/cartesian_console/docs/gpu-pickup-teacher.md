@@ -12,7 +12,7 @@ Run from the repository root:
 
 ```bash
 TMPDIR="$PWD/runs/cartesian_console/cache" MUJOCO_GL=egl OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
-python -m openarm_sim.warp_train --num-envs 1024 --steps 50000000 \
+openarm-train-pickup-gpu --num-envs 1024 --steps 50000000 \
   --save-every 5000000 --position-range 0.05 --normalize --ent-coef 0.01
 ```
 
@@ -39,7 +39,7 @@ Reset-bank construction and video rendering use the CPU MuJoCo model. Training p
 Install `.[tracking]` and authenticate with `wandb login`. Start live synchronization in another terminal:
 
 ```bash
-TMPDIR="$PWD/runs/cartesian_console/cache" python -m openarm_sim.wandb_tracking \
+TMPDIR="$PWD/runs/cartesian_console/cache" openarm-track-training \
   runs/cartesian_console/rl/pickup-teacher-milestones50m --project openarm-teachers
 ```
 

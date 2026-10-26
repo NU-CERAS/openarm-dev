@@ -18,6 +18,7 @@ class ResidualDrumStrikeEnv(gym.Wrapper):
         self.randomization = randomization
         self.observation_space = spaces.Box(-np.inf, np.inf, shape=(51,), dtype=np.float32)
         self.sim = self.env.sim
+        self.reference_data = mujoco.MjData(self.sim.model)
         self.reference: JointTrajectory | None = None
         self.last_residual = np.zeros(8)
         self.nominal_mass = float(self.sim.model.body_mass[self.env.pickup.stick_body_id])
@@ -25,10 +26,10 @@ class ResidualDrumStrikeEnv(gym.Wrapper):
         self.nominal_friction = self.sim.model.geom_friction[self.env.stick_id].copy()
 
     def _reference_tip(self, time_s):
-        data = mujoco.MjData(self.sim.model)
+        data = self.reference_data
         data.qpos[:] = self.sim.data.qpos
         data.qpos[self.sim.qpos_ids["right"]] = self.reference.sample(time_s)
-        mujoco.mj_forward(self.sim.model, data)
+        mujoco.mj_kinematics(self.sim.model, data)
         return data.site_xpos[self.sim.site_ids["right"]] + self.tip_offset
 
     def _observation(self, observation):
@@ -73,6 +74,7 @@ class ResidualDrumStrikeEnv(gym.Wrapper):
             "nominal_strike_reference",
         )
         self.last_residual = np.zeros(8)
+        self.previous_potential = 0.5
         self.domain_parameters = {"stick_mass_kg": float(self.sim.model.body_mass[body_id]), "friction_scale": float(friction_scale)}
         return self._observation(observation), {**info, "curriculum_stage": self.curriculum_stage, **self.domain_parameters}
 
@@ -93,17 +95,24 @@ class ResidualDrumStrikeEnv(gym.Wrapper):
         trajectory_reward = float(np.exp(-(tracking_error / 0.04)**2)) * grasp_reward
         energy_penalty = float(0.0001 * np.sum(self.sim.data.actuator_force**2))
         action_penalty = float(0.01 * np.sum((action - self.last_residual)**2))
-        reward = grasp_reward + 2 * trajectory_reward - energy_penalty - action_penalty
+        reward_terms = {"grasp": grasp_reward, "trajectory": 2 * trajectory_reward,
+                        "energy": -energy_penalty, "action_change": -action_penalty}
         if self.curriculum_stage == 1:
-            reward += 3.0 * (info["hit_count"] - previous_hits)
+            reward_terms["impact"] = 3.0 * (info["hit_count"] - previous_hits)
         elif self.curriculum_stage == 2:
-            reward += task_reward
+            potential = 0.0 if terminated or truncated else 0.5 * trajectory_reward
+            progress = 0.99 * potential - self.previous_potential
+            self.previous_potential = potential
+            reward_terms = {"task": task_reward, "progress": progress, "time": -0.01,
+                            "energy": -energy_penalty, "action_change": -action_penalty,
+                            "success": 50.0 * info["is_success"], "timeout": -5.0 * truncated,
+                            "failure": -10.0 * (terminated and not info["is_success"])}
         if info["unsafe_contact"]:
-            reward -= 5.0
+            reward_terms["unsafe"] = -5.0
         self.last_residual = action.copy()
-        return self._observation(observation), reward, terminated, truncated, {
+        return self._observation(observation), sum(reward_terms.values()), terminated, truncated, {
             **info, "curriculum_stage": self.curriculum_stage, "reference_error_m": tracking_error,
-            "reward_terms": {"grasp": grasp_reward, "trajectory": trajectory_reward, "task": task_reward,
-                             "energy_penalty": energy_penalty, "action_penalty": action_penalty},
+            "reward_version": "strike_terminal_potential_v1" if self.curriculum_stage == 2 else "strike_curriculum_v1",
+            "reward_terms": reward_terms,
             **self.domain_parameters,
         }

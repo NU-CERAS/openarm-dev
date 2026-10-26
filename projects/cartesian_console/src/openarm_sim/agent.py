@@ -68,7 +68,7 @@ def main() -> None:
     parser.add_argument("instruction")
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--model", required=True)
-    parser.add_argument("--planner", choices=["curobo", "mink"], default="curobo")
+    parser.add_argument("--planner", choices=["ompl", "curobo", "mink"], default="ompl")
     parser.add_argument("--max-turns", type=int, default=12)
     parser.add_argument("--trace", type=Path, default=RUNS / "agent/trace.jsonl")
     args = parser.parse_args()

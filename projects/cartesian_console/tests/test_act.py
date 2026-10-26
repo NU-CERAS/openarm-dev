@@ -1,13 +1,14 @@
 from pathlib import Path
+import shutil
 
 import numpy as np
 import h5py
 import pytest
 import torch
 
-from openarm_sim.act_data import EpisodeDataset, collect_reference, proprioception
+from openarm_sim.act_data import EpisodeDataset, collect_reference, proprioception, visual_state
 from openarm_sim.act_model import ACTConfig, ActionChunkTransformer, normalization
-from openarm_sim.act_distill import merge_datasets
+from openarm_sim.act_distill import merge_datasets, render_reference_images
 from openarm_sim.act_residual import ACTResidualVecEnv, SquashedResidualPolicy
 from openarm_sim.warp_pickup import WarpPickupVecEnv, build_reset_bank
 from openarm_sim.paths import RUNS
@@ -115,3 +116,47 @@ def test_squashed_residual_policy_log_probability_is_consistent(demonstration):
         assert all(parameter.grad is None for parameter in env.teacher.parameters())
     finally:
         env.close()
+
+
+def test_smoothed_residual_state_resets_between_physical_episodes(demonstration):
+    raw = WarpPickupVecEnv(2, demonstration / "resets.npz")
+    env = ACTResidualVecEnv(raw, demonstration / "teacher.pt", action_smoothing=0.8)
+    try:
+        env.reset()
+        action = np.full((2, 8), 0.5, dtype=np.float32)
+        expected = env.compose(action).clone()
+        env.step_async(action)
+        torch.testing.assert_close(env.executed, expected)
+        torch.testing.assert_close(env.last_residual, torch.full_like(env.last_residual, 0.1))
+        env.step_wait()
+        env.reset()
+        torch.testing.assert_close(env.last_residual, torch.zeros_like(env.last_residual))
+    finally:
+        env.close()
+
+
+def test_visual_student_uses_rendered_rgb_and_robot_only_features(demonstration):
+    shutil.copyfile(demonstration / "resets.npz", demonstration / "episodes_resets.npz")
+    images_path = demonstration / "visual.h5"
+    render_reference_images(demonstration / "episodes.h5", images_path, 1, width=320, height=180)
+    dataset = EpisodeDataset(images_path, 20, student=True, student_state="position-clock")
+    model = ActionChunkTransformer(ACTConfig(state_dim=9, hidden=32, layers=1, vision=True, relative_commands=True,
+                                             image_width=320, image_height=180, image_feature_stage=3), *normalization(dataset, True))
+    state, command, padding, images = dataset.batch(np.array([0]), device="cpu")
+    assert state.shape == (1, 9)
+    assert images.shape == (1, 3, 180, 320)
+    loss, _, kl = model.distillation_loss(state, command, padding, images)
+    assert kl == 0
+    loss.backward()
+    assert model.backbone[0].weight.grad is not None
+    original = EpisodeDataset(demonstration / "episodes.h5", 20).state[:1].copy()
+    changed = original.copy()
+    changed[:, 16:34] += 12345
+    changed[:, 42:] -= 12345
+    np.testing.assert_array_equal(proprioception(original), proprioception(changed))
+    np.testing.assert_array_equal(visual_state(original, 0.02, 9), visual_state(changed, 0.02, 9))
+    model.eval()
+    expected = model.commands(state, images)
+    model.save(demonstration / "visual_student.pt")
+    restored = ActionChunkTransformer.load(demonstration / "visual_student.pt", device="cpu")
+    torch.testing.assert_close(restored.commands(state, images), expected)

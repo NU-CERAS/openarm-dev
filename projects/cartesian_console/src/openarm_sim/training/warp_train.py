@@ -12,9 +12,10 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common.vec_env import VecNormalize, sync_envs_normalization
 
-from .warp_pickup import WarpPickupVecEnv, build_reset_bank
-from .pickup_reward import REWARD_VERSION
-from .paths import RUNS
+from ..warp_pickup import WarpPickupVecEnv, build_reset_bank
+from ..pickup_reward import REWARD_VERSION
+from ..paths import RUNS
+from ..compute_guard import budgeted, check_resources
 
 
 def evaluate_and_record(policy: PPO, env: WarpPickupVecEnv, directory: Path, steps: int) -> dict:
@@ -88,6 +89,7 @@ class TeacherCheckpoint(BaseCallback):
         self.next_save = interval
 
     def _on_step(self) -> bool:
+        check_resources()
         self.logger.record_mean("pickup/action_clip_fraction", float(np.mean(np.abs(self.locals["actions"]) > 1)))
         for info in self.locals["infos"]:
             if "episode" not in info:
@@ -107,6 +109,7 @@ class TeacherCheckpoint(BaseCallback):
         return True
 
 
+@budgeted("openarm_sim.training.warp_train")
 def main():
     parser = argparse.ArgumentParser(description="Train an oracle pickup teacher with GPU MuJoCo physics")
     parser.add_argument("--num-envs", type=int, default=1024)

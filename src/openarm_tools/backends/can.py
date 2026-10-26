@@ -51,13 +51,15 @@ class Hardware:
                  'temperature_rotor': m.get_state_trotor()}
                 for j, m, p in zip(self.cfg['joints'], self.motors, positions)]
 
-    def move(self, points):
+    def move(self, points, *, on_feedback=None):
         if not self.cfg.get('hardware_reviewed', False):
             raise ValueError('Review the physical robot mapping, limits and gains in a custom config; set hardware_reviewed=true.')
         if any(m.is_enabled() for m in self.motors):
             raise RuntimeError('Motors are already enabled; stop the existing controller first.')
         previous = self.read()
         validate_positions(self.cfg, previous)
+        if on_feedback is not None:
+            on_feedback(previous)
         self.enabled = True  # Cleanup even if enabling only partially succeeds.
         try:
             self.arm.enable_all()
@@ -70,6 +72,8 @@ class Hardware:
                     raise RuntimeError('Control deadline missed.')
                 actual = self.read()
                 validate_positions(self.cfg, actual)
+                if on_feedback is not None:
+                    on_feedback(actual)
                 if max(abs(a - b) for a, b in zip(actual, previous)) > self.cfg['max_tracking_error']:
                     raise RuntimeError('Tracking error exceeded configured limit.')
                 self.component.mit_control_all([
@@ -81,6 +85,8 @@ class Hardware:
             for _ in range(50):
                 actual = self.read()
                 validate_positions(self.cfg, actual)
+                if on_feedback is not None:
+                    on_feedback(actual)
                 if max(abs(a - b) for a, b in zip(actual, previous)) > self.cfg['max_tracking_error']:
                     raise RuntimeError('Final tracking error exceeded configured limit.')
                 self.component.mit_control_all([

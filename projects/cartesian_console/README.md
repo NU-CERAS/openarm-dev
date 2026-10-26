@@ -1,107 +1,118 @@
 # Cartesian Console
 
-Camera-guided Cartesian reach, electronic-drum simulation, physical stick pickup,
-and oracle ACT / residual PPO skill learning for OpenArm v1.0.
+OpenArm tabletop simulation, feedback-driven hardware synchronization, collision
+avoidance and skill learning. The default OMPL planner runs on CPU. cuRobo is an
+optional CUDA backend.
 
-## Installation
+## Install
 
-Run from the repository root in the `mujoco` environment:
+From the repository root, using Python 3.12 or newer:
 
 ```bash
-conda activate mujoco
 mkdir -p runs/cartesian_console/cache
 export TMPDIR="$PWD/runs/cartesian_console/cache"
-uv pip install --python "$CONDA_PREFIX/bin/python" -e . \
-  -e './projects/cartesian_console[dev,agent,rl,gpu-sim,tracking,imitation,video,assets]'
+python -m pip install -e . -e './projects/cartesian_console[dev]'
 ```
 
-For a new conda environment, run `conda env create -f environment.yml` from this
-project directory. Install CUDA PyTorch and cuRobo with
-`bash projects/cartesian_console/scripts/setup_curobo.sh` from the repository root.
-The script generates planning assets from `robots/v1.0/models/scene.xml`.
+This installs MuJoCo, mink IK and OMPL. CUDA, PyTorch and ROS are optional.
+`environment.yml` provides the equivalent conda environment.
 
-## Interactive demos
+## Start the tabletop console
 
 ```bash
-openarm-reach --planner mink
-openarm-reach --planner curobo
+OPENARM_PYTHON="$(command -v python)" bash projects/cartesian_console/scripts/run_sync.sh
+```
+
+The English interface shows live joint feedback beside a separate motion
+preview. Enter XYZ or click the sim tabletop, preview, execute, observe the arm,
+adjust the coordinate and save a named target. The demo uses an independent
+MuJoCo robot as the controlled plant. Opening the interface starts no motion.
+
+For physical hardware, fill `configs/sync_hardware.example.json` using the
+[connection and operating guide](docs/sync-console.md). The current adapter uses
+the shared SocketCAN backend and seven motors per arm. Hardware connection
+parameters are placeholders until configured for the actual robot.
+
+## Planning backends
+
+| `--planner` | Execution | Path generation |
+| --- | --- | --- |
+| `ompl` (default) | CPU | mink IK, RRTConnect obstacle avoidance, MuJoCo collision checking |
+| `curobo` | CUDA GPU | cuRobo trajectory optimization and collision checking |
+| `mink` | CPU | IK and direct joint interpolation; rejects colliding paths |
+
+```bash
+openarm-sync --planner ompl
+openarm-sync --planner curobo
+openarm-reach --planner ompl
+```
+
+See [motion planning](docs/motion-planning.md) for backend installation,
+software rendering and collision behavior.
+
+## Other demos and learning
+
+```bash
 openarm-reach --scene pickup
 openarm-reach --scene strike
-openarm-reach --scene kit --planner curobo \
-  --drum-asset runs/cartesian_console/drumset/converted/manifest.json
+openarm-train-drum --help
+openarm-collect-act --help
+openarm-train-act --help
+openarm-train-pickup-residual --help
+openarm-distill-act --help
+openarm-train-strike --help
 ```
 
-Reach displays the calibrated head camera, accepts a pixel selection and executes
-a joint trajectory. Camera position, viewing direction and field of view are
-editable in the English GUI. cuRobo plans against scene obstacles; `mink` uses
-IK with joint interpolation and collision checks. Pickup and strike buttons run
-physical reference controllers. Opening a demo starts no training.
-
-The electronic kit requires the separately downloaded Sketchfab archive:
+Install the corresponding extras for these workflows:
 
 ```bash
-openarm-import-drum /home/jixinyan/Downloads/electronic_drum_set.zip
+python -m pip install -e './projects/cartesian_console[rl,gpu-sim,tracking,imitation,video,assets]'
 ```
 
-See [camera reach](docs/simulation-demo.md),
-[electronic kit](docs/electronic-drum-scene.md), and
-[planning and execution](docs/planning-rl-sim2real.md).
+GPU training requires a compatible CUDA PyTorch installation. Training,
+collection and evaluation run serially within the shared compute budget.
+Opening a demo starts no training. Checkpoints and datasets are supplied through
+CLI paths; generated artifacts are stored under `runs/cartesian_console/`.
 
-## Package boundaries
+| Guide | Purpose |
+| --- | --- |
+| [Synchronization console](docs/sync-console.md) | Hardware placeholders, operator controls, saved targets and recording |
+| [Motion planning](docs/motion-planning.md) | CPU/GPU backend setup and execution behavior |
+| [Simulation demos](docs/simulation-demo.md) | Camera controls, pickup, strike and VLM tool usage |
+| [Electronic drum asset](docs/electronic-drum-scene.md) | Import and display an independently downloaded asset |
+| [GPU pickup training](docs/gpu-pickup-teacher.md) | MuJoCo Warp environment and teacher commands |
+| [Pickup reward](docs/pickup-reward.md) | Reward terms and task success conditions |
+| [Compute resources](docs/compute-resources.md) | Resource limits, recovery and supervision |
+
+## Source directories
 
 | Location | Responsibility |
 | --- | --- |
-| `src/openarm_sim/` | Task scenes, camera geometry, reach, RL, ACT, VLM tools and ROS adapter |
-| `configs/rl/` | Task training configurations |
-| `tests/` | Real MuJoCo and CUDA integration checks |
-| Repository `src/openarm_tools/` | Shared robot configuration, commissioning and backend commands |
-| Repository `robots/` | Canonical models, meshes and per-arm configurations |
-| Repository `runs/cartesian_console/` | Generated planning assets, datasets, checkpoints, videos and test output |
+| `src/openarm_sim/console/` | Feedback transport, synchronization UI and demo recording |
+| `src/openarm_sim/planning/` | OMPL, cuRobo and exported planning assets |
+| `src/openarm_sim/training/` | Training, evaluation, pipeline and W&B entry points |
+| `src/openarm_sim/` | Shared task environments, observations, ACT models and execution interfaces |
+| `configs/` | Operator connection templates and task settings |
+| `scripts/` | Unified startup and optional cuRobo installation |
+| `tests/` | Actual physics, collision, execution and integration checks |
+| Repository `src/openarm_tools/` | Shared robot configuration and hardware backends |
+| Repository `robots/` | Canonical models, meshes and actuator settings |
+| Repository `runs/cartesian_console/` | Local assets, datasets, checkpoints, recordings and output |
 
-`openarm_sim.paths` obtains the checkout through `openarm_tools.robot.config.root`;
-`OPENARM_ROOT` can select an explicit checkout. Both arm joint orders and the
-model path come from the shared v1.0 configuration. The distribution remains
-`openarm-sim`, with existing imports, console commands, dataset schema and
-checkpoint formats. Robot geometry remains in the shared `robots/` directory.
+The robot model and joint order come from `openarm_tools.robot.config`.
+`OPENARM_ROOT` selects an explicit checkout. Keep generated output and local
+research notes under `runs/`; commit source, configuration templates and usage
+documentation.
 
-The shared `openarm` CLI retains its independent commissioning sessions. Task
-simulation owns one synchronized bimanual MuJoCo state. Their saved state files
-are separate. Task code does not modify shared calibration or start CAN motors.
-
-## Learning and execution status
-
-The pipeline provides reference collection, oracle ACT training, frozen-ACT
-residual PPO, camera/proprioception student supervision and W&B tracking.
-The oracle teacher can access object state. The student receives robot feedback,
-action history and RGB images.
-
-The existing pickup experiment achieved 58/64 successes with ACT and 57/64 with
-ACT plus PPO residual on 64 distinct held-out starting states from the same
-distribution. This experiment shows no PPO improvement. The camera student has
-only completed a short execution check and has no demonstrated pickup ability.
-These results belong to existing checkpoints; migration checks do not repeat
-the training experiment. Existing files outside this checkout can be supplied
-through explicit CLI paths.
-
-`ArmCommand` carries seven joint targets in radians and gripper displacement in
-meters. `JointTrajectory` preserves named-joint timing and velocities.
-`MujocoArmInterface` and `Ros2ArmInterface` consume these commands; ROS topics
-match `src/ros/openarm_mujoco_sim/config/controllers.yaml`. Real execution also
-requires calibrated robot limits, feedback, scene perception and camera/base/TCP
-transforms. ROS runtime and physical motor execution have not been validated on
-this workstation. Current VLM tools cover observation and reach.
-
-## Verification
-
-From this project directory after installation:
+## Verify
 
 ```bash
-export TMPDIR="$(pwd)/../../runs/cartesian_console/cache"
-MUJOCO_GL=egl python -m pytest -q tests
-openarm-reach --planner mink --smoke-test
-openarm-reach --scene pickup --smoke-test
-openarm-reach --scene strike --smoke-test
+CUDA_VISIBLE_DEVICES="" __GLX_VENDOR_LIBRARY_NAME=mesa LIBGL_ALWAYS_SOFTWARE=1 MUJOCO_GL=glfw \
+  python -m pytest -q projects/cartesian_console/tests/test_ompl.py \
+  projects/cartesian_console/tests/test_sync.py
 ```
 
-cuRobo checks require generated planning assets. Kit checks require the imported
-asset. GPU/ACT checks execute real MuJoCo Warp physics and require CUDA.
+The complete project suite additionally requires the learning/CUDA extras.
+cuRobo checks require generated planning assets. Asset-specific checks require
+the separately imported asset. Physical motor verification is performed on the
+actual reviewed hardware configuration.

@@ -1,5 +1,4 @@
 from copy import deepcopy
-from dataclasses import dataclass
 from pathlib import Path
 
 import mujoco
@@ -10,14 +9,9 @@ from curobo.motion_planner import MotionPlanner, MotionPlannerCfg
 from curobo.scene import Scene
 from curobo.types import GoalToolPose, JointState
 
-from .execution import JointTrajectory, joint_names
-from .paths import RUNS
-
-
-@dataclass(frozen=True)
-class PlanningResult:
-    trajectory: JointTrajectory | None
-    reason: str = ""
+from ..execution import JointTrajectory, joint_names
+from ..paths import RUNS
+from . import PlanningResult
 
 
 class CuroboPlanner:

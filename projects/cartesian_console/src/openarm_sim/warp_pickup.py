@@ -1,4 +1,5 @@
 from pathlib import Path
+from functools import wraps
 
 import gymnasium as gym
 import mujoco
@@ -10,6 +11,21 @@ from stable_baselines3.common.vec_env import VecEnv
 
 from .pickup import StickPickupEnv
 from .pickup_reward import PickupReward, REWARD_VERSION
+
+
+def simulation_stream(method):
+    @wraps(method)
+    def run(self, *args, **kwargs):
+        caller = torch.cuda.current_stream()
+        changed = caller.cuda_stream != self.torch_stream.cuda_stream
+        if changed:
+            self.torch_stream.wait_stream(caller)
+        with wp.ScopedStream(self.stream, sync_enter=False, sync_exit=False), torch.cuda.stream(self.torch_stream):
+            result = method(self, *args, **kwargs)
+        if changed:
+            caller.wait_stream(self.torch_stream)
+        return result
+    return run
 
 
 @wp.kernel
@@ -114,7 +130,12 @@ class WarpPickupVecEnv(VecEnv):
         self.device = "cuda"
         wp.init()
         torch.cuda.synchronize()
-        torch.cuda.set_stream(wp.stream_to_torch(wp.get_stream()))
+        self.stream = wp.Stream(f"cuda:{torch.cuda.current_device()}")
+        self.torch_stream = wp.stream_to_torch(self.stream)
+        self._initialize_gpu(num_envs)
+
+    @simulation_stream
+    def _initialize_gpu(self, num_envs):
         self.wmodel = mjw.put_model(self.model)
         self.data = mjw.put_data(self.model, self.sim.data, nworld=num_envs, nconmax=64, njmax=256)
         self.wmodel.geom_pos = wp.array(np.tile(self.model.geom_pos, (num_envs, 1, 1)), dtype=wp.vec3, device="cuda")
@@ -139,6 +160,7 @@ class WarpPickupVecEnv(VecEnv):
         self.desired = torch.zeros((num_envs, self.model.nu), device="cuda")
         self.last_action = torch.zeros((num_envs, 8), device="cuda")
         self.elapsed = torch.zeros(num_envs, device="cuda")
+        self.reset_samples = torch.zeros(num_envs, dtype=torch.long, device="cuda")
         self.initial_height = torch.zeros(num_envs, device="cuda")
         self.returns = np.zeros(num_envs)
         self.lengths = np.zeros(num_envs, dtype=int)
@@ -177,6 +199,7 @@ class WarpPickupVecEnv(VecEnv):
                           self.data.contact.dist, self.robot_geom_wp, self.cpu.stick_geom_id, *fingers],
                   outputs=[self.flags_wp])
 
+    @simulation_stream
     def _reset_indices(self, indices):
         if len(indices) == 0:
             return
@@ -190,6 +213,7 @@ class WarpPickupVecEnv(VecEnv):
         mask[ids] = True
         mjw.reset_data(self.wmodel, self.data, wp.from_torch(mask))
         self.qpos[ids] = self.bank_qpos[samples]
+        self.reset_samples[ids] = samples
         self.qvel[ids] = 0
         self.desired[ids] = self.bank_commands[samples]
         self.geom_positions[ids, self.drum_id] = self.bank_drums[samples]
@@ -223,21 +247,28 @@ class WarpPickupVecEnv(VecEnv):
             raise RuntimeError("MuJoCo Warp contact or constraint capacity exceeded")
         return self.flags[:, :2].sum(dim=1), self.flags[:, 2].bool()
 
+    @simulation_stream
     def reset(self):
         if self._seeds[0] is not None:
             self.rng = np.random.default_rng(self._seeds[0])
         if self.sequential_resets:
-            self.reset_cursor = 0
+            offset = self._options[0].get("bank_offset", 0)
+            if type(offset) is not int or offset < 0 or offset + self.num_envs > len(self.bank_qpos):
+                raise ValueError("Sequential reset offset exceeds the reset bank")
+            self.reset_cursor = offset
         self._reset_indices(np.arange(self.num_envs))
         self._reset_seeds()
+        self._reset_options()
         return self._observation().cpu().numpy()
 
+    @simulation_stream
     def step_async(self, actions):
         values = np.asarray(actions, dtype=np.float32)
         if values.shape != (self.num_envs, 8) or not np.isfinite(values).all() or np.any(np.abs(values) > 1):
             raise ValueError("Invalid batched pickup actions")
         self.actions = torch.as_tensor(values, device="cuda")
 
+    @simulation_stream
     def step_wait(self):
         self.desired[:, self.arm_aids] = torch.clamp(self.desired[:, self.arm_aids] + 0.025 * self.actions[:, :7],
                                                    self.limits[self.arm_aids, 0], self.limits[self.arm_aids, 1])
@@ -275,6 +306,7 @@ class WarpPickupVecEnv(VecEnv):
                                         *self.reward_state.term_totals.values()), dim=1).cpu().numpy()
         for i in np.flatnonzero(done):
             infos[i] = {"is_success": bool(success_np[i]), "unsafe_contact": bool(unsafe_np[i]),
+                        "reset_index": int(self.reset_samples[i].item()),
                         "terminal_qpos": terminal_positions[i],
                         "TimeLimit.truncated": False, "terminal_observation": obs[i].copy(),
                         "max_lift_m": float(diagnostics[i, 0]), "milestone_2cm": bool(diagnostics[i, 1]),
@@ -289,13 +321,25 @@ class WarpPickupVecEnv(VecEnv):
             obs[done] = self._observation()[torch.as_tensor(done, device="cuda")].cpu().numpy()
         return obs, reward, done, infos
 
+    @simulation_stream
     def snapshot(self, world=0):
         mjw.get_data_into(self.sim.data, self.model, self.data, world_id=world)
         self.model.geom_pos[self.drum_id] = self.geom_positions[world, self.drum_id].cpu().numpy()
         mujoco.mj_forward(self.model, self.sim.data)
         return self.sim.data
 
+    @simulation_stream
+    def render_snapshot(self, world=0):
+        self.sim.data.qpos[:] = self.qpos[world].cpu().numpy()
+        self.sim.data.qvel[:] = self.qvel[world].cpu().numpy()
+        self.sim.data.time = float(self.elapsed[world].item())
+        self.model.geom_pos[self.drum_id] = self.geom_positions[world, self.drum_id].cpu().numpy()
+        mujoco.mj_kinematics(self.model, self.sim.data)
+        mujoco.mj_camlight(self.model, self.sim.data)
+        return self.sim.data
+
     def close(self):
+        wp.synchronize_stream(self.stream)
         self.cpu.close()
 
     def get_attr(self, attr_name, indices=None):

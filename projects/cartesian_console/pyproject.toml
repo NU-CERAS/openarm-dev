@@ -18,6 +18,8 @@ dependencies = [
     "jsonschema>=4,<5",
     "scipy>=1.14",
     "pyyaml>=6,<7",
+    "psutil>=6,<8",
+    "ompl==2.0.1",
 ]
 
 [project.optional-dependencies]
@@ -33,18 +35,24 @@ assets = ["trimesh==5.2.0"]
 
 [project.scripts]
 openarm-reach = "openarm_sim.demo:main"
-openarm-train-drum = "openarm_sim.train:main"
-openarm-train-pickup-gpu = "openarm_sim.warp_train:main"
-openarm-track-training = "openarm_sim.wandb_tracking:main"
+openarm-train-drum = "openarm_sim.training.train:main"
+openarm-train-pickup-gpu = "openarm_sim.training.warp_train:main"
+openarm-track-training = "openarm_sim.training.wandb_tracking:main"
 openarm-collect-act = "openarm_sim.act_data:main"
-openarm-train-act = "openarm_sim.act_train:main"
+openarm-train-act = "openarm_sim.training.act_train:main"
 openarm-train-act-residual = "openarm_sim.act_residual:main"
 openarm-distill-act = "openarm_sim.act_distill:main"
 openarm-agent = "openarm_sim.agent:main"
-openarm-build-planning-assets = "openarm_sim.build_planning_assets:main"
+openarm-build-planning-assets = "openarm_sim.planning.assets:main"
 openarm-replay = "openarm_sim.replay:main"
 openarm-record-demo = "openarm_sim.record_demo:main"
 openarm-import-drum = "openarm_sim.drum_asset:main"
+openarm-evaluate-pickup = "openarm_sim.training.pickup_evaluation:main"
+openarm-train-pickup-residual = "openarm_sim.training.robust_pickup:main"
+openarm-train-strike = "openarm_sim.training.strike_train:main"
+openarm-train-skills = "openarm_sim.training.skill_pipeline:main"
+openarm-compute = "openarm_sim.compute_guard:main"
+openarm-sync = "openarm_sim.console.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

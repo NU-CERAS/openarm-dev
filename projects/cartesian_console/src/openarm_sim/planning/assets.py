@@ -7,8 +7,8 @@ import numpy as np
 import trimesh
 from yourdfpy import Collision, Geometry, Joint, Limit, Link, Mesh, Robot, URDF, Visual
 
-from .simulation import ReachSimulation
-from .paths import MODEL, ROOT, RUNS
+from ..simulation import ReachSimulation
+from ..paths import MODEL, ROOT, RUNS
 
 
 def transform(position, rotation):

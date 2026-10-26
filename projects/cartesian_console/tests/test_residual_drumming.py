@@ -1,6 +1,19 @@
 import numpy as np
+import mujoco
 
 from openarm_sim.residual_drumming import ResidualDrumStrikeEnv
+
+
+def test_reference_kinematics_matches_full_mujoco_forward():
+    with ResidualDrumStrikeEnv(randomization=0.0) as env:
+        env.reset(seed=3)
+        data = mujoco.MjData(env.sim.model)
+        for time_s in np.linspace(0, 2, 11):
+            data.qpos[:] = env.sim.data.qpos
+            data.qpos[env.sim.qpos_ids["right"]] = env.reference.sample(time_s)
+            mujoco.mj_forward(env.sim.model, data)
+            expected = data.site_xpos[env.sim.site_ids["right"]] + env.tip_offset
+            np.testing.assert_allclose(env._reference_tip(time_s), expected, atol=1e-12)
 
 
 def test_nominal_reference_produces_real_contact_without_learning():
@@ -14,6 +27,7 @@ def test_nominal_reference_produces_real_contact_without_learning():
             observation, reward, terminated, truncated, info = env.step(action)
             assert env.observation_space.contains(observation)
             assert np.isfinite(reward)
+            assert np.isclose(reward, sum(info["reward_terms"].values()))
             if terminated or truncated:
                 break
         assert info["hit_count"] > 0

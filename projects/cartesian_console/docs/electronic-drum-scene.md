@@ -9,7 +9,7 @@ The downloaded glTF contains 45 mesh instances and 416,246 triangles. The conver
 Run from the repository root in the `mujoco` environment after the [project installation](../README.md). The optional `assets` dependency is included by the planning setup.
 
 ```bash
-openarm-import-drum /home/jixinyan/Downloads/electronic_drum_set.zip
+openarm-import-drum /path/to/electronic_drum_set.zip
 openarm-reach --scene kit --drum-asset runs/cartesian_console/drumset/converted/manifest.json
 ```
 

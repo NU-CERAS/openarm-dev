@@ -13,10 +13,11 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common.vec_env import SubprocVecEnv
 
-from .drumming import DrumStrikeEnv
-from .pickup import StickPickupEnv
-from .residual_drumming import ResidualDrumStrikeEnv
-from .paths import RUNS
+from ..drumming import DrumStrikeEnv
+from ..pickup import StickPickupEnv
+from ..residual_drumming import ResidualDrumStrikeEnv
+from ..paths import RUNS
+from ..compute_guard import budgeted
 
 
 def environment_factory(task: str, curriculum_stage=2, randomization=0.1, residual_scale=0.08):
@@ -47,6 +48,7 @@ def evaluate(policy: PPO, episodes: int, seed: int = 1000, task: str = "residual
     }
 
 
+@budgeted("openarm_sim.training.train")
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train or evaluate an OpenArm pickup or strike policy")
     parser.add_argument("--config", type=Path)

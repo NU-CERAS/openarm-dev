@@ -16,8 +16,22 @@ from stable_baselines3.common.vec_env import VecEnvWrapper, VecNormalize
 from .act_data import command_action, command_vector, limited_command
 from .act_model import ACTController, ActionChunkTransformer
 from .paths import RUNS
+from .compute_guard import budgeted
 from .warp_pickup import WarpPickupVecEnv
-from .warp_train import TeacherCheckpoint, evaluate_and_record, save_teacher
+from .training.warp_train import TeacherCheckpoint, evaluate_and_record, save_teacher
+
+
+def residual_configuration(directory: Path):
+    path = directory / "execution_config.json"
+    if not path.exists():
+        path = directory.parent / "run_config.json"
+    settings = json.loads(path.read_text())
+    algorithm = settings["algorithm"]
+    if algorithm not in ("ACT+residual_PPO", "frozen_ACT_residual_PPO"):
+        raise ValueError("Unsupported residual execution configuration")
+    return {"query_interval": settings["query_interval"], "joint_scale": settings["joint_residual_rad"],
+            "gripper_scale": settings["gripper_residual_m"],
+            "action_smoothing": 0.0 if algorithm == "ACT+residual_PPO" else settings["action_smoothing"]}
 
 
 class SquashedResidualPolicy(ActorCriticPolicy):
@@ -28,9 +42,15 @@ class SquashedResidualPolicy(ActorCriticPolicy):
         torch.nn.init.zeros_(self.action_net.weight)
         torch.nn.init.zeros_(self.action_net.bias)
 
+    def evaluate_actions(self, obs, actions):
+        values, log_probability, _ = super().evaluate_actions(obs, actions)
+        sampled = self.action_dist.sample()
+        entropy = -self.action_dist.log_prob(sampled, self.action_dist.gaussian_actions)
+        return values, log_probability, entropy
+
 
 class ACTResidualVecEnv(VecEnvWrapper):
-    def __init__(self, env: WarpPickupVecEnv, teacher: Path, query_interval=5, joint_scale=0.03, gripper_scale=0.002):
+    def __init__(self, env: WarpPickupVecEnv, teacher: Path, query_interval=5, joint_scale=0.03, gripper_scale=0.002, action_smoothing=0.0):
         if not 0 < joint_scale <= 0.08 or not 0 <= gripper_scale <= 0.005:
             raise ValueError("Invalid ACT residual limits")
         self.teacher = ActionChunkTransformer.load(teacher)
@@ -39,6 +59,9 @@ class ACTResidualVecEnv(VecEnvWrapper):
         self.teacher.requires_grad_(False)
         self.controller = ACTController(self.teacher, env.num_envs, query_interval)
         self.joint_scale, self.gripper_scale = joint_scale, gripper_scale
+        if not 0 <= action_smoothing < 1:
+            raise ValueError("Action smoothing must be in [0, 1)")
+        self.action_smoothing = action_smoothing
         self.last_residual = torch.zeros((env.num_envs, 8), device="cuda")
         self.nominal = command_vector(env).clone()
         self.executed = self.nominal.clone()
@@ -64,6 +87,7 @@ class ACTResidualVecEnv(VecEnvWrapper):
         residual = torch.as_tensor(residual, device="cuda", dtype=torch.float32)
         if residual.shape != (self.num_envs, 8) or not bool(torch.isfinite(residual).all()) or bool((residual.abs() > 1).any()):
             raise ValueError("Residual actions must be finite and bounded")
+        residual = self.action_smoothing * self.last_residual + (1 - self.action_smoothing) * residual
         command = self.nominal.clone()
         command[:, :7] += self.joint_scale * residual[:, :7]
         command[:, 7] = torch.clamp(command[:, 7] + self.gripper_scale * residual[:, 7], 0, 0.044)
@@ -75,7 +99,7 @@ class ACTResidualVecEnv(VecEnvWrapper):
 
     def step_async(self, actions):
         self.executed = self.compose(actions)
-        self.last_residual.copy_(torch.as_tensor(actions, device="cuda"))
+        self.last_residual.mul_(self.action_smoothing).add_(torch.as_tensor(actions, device="cuda"), alpha=1 - self.action_smoothing)
         self.venv.step_async(command_action(self.venv, self.executed).cpu().numpy())
 
     def step_command(self, command):
@@ -117,6 +141,7 @@ class ResidualCheckpoint(TeacherCheckpoint):
         return super()._on_step()
 
 
+@budgeted("openarm_sim.act_residual")
 def main():
     parser = argparse.ArgumentParser(description="Refine a frozen oracle ACT with bounded residual PPO")
     parser.add_argument("--teacher", type=Path, required=True)

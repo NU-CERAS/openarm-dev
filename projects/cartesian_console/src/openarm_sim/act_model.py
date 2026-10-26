@@ -20,6 +20,9 @@ class ACTConfig:
     relative_commands: bool = False
     physical_oracle: bool = False
     observation_clip: float = 1000000.0
+    image_width: int = 192
+    image_height: int = 108
+    image_feature_stage: int = 4
 
 
 class ActionChunkTransformer(nn.Module):
@@ -53,10 +56,13 @@ class ActionChunkTransformer(nn.Module):
         self.decoder = nn.TransformerDecoder(decoder_layer, config.layers, norm=nn.LayerNorm(config.hidden))
         self.action_head = nn.Linear(config.hidden, config.action_dim)
         if config.vision:
+            if config.image_feature_stage not in (3, 4):
+                raise ValueError("Visual feature stage must be 3 or 4")
             backbone = resnet18(weights=None)
-            self.backbone = nn.Sequential(*list(backbone.children())[:-2])
-            self.image_projection = nn.Conv2d(512, config.hidden, 1)
-            self.image_positions = nn.Parameter(torch.randn(1, 64, config.hidden) * 0.02)
+            self.backbone = nn.Sequential(*list(backbone.children())[:-(6 - config.image_feature_stage)])
+            channels = 256 if config.image_feature_stage == 3 else 512
+            self.image_projection = nn.Conv2d(channels, config.hidden, 1)
+            self.image_positions = nn.Parameter(torch.randn(1, 256 if config.image_feature_stage == 3 else 64, config.hidden) * 0.02)
             self.register_buffer("image_mean", torch.tensor([0.485, 0.456, 0.406]).reshape(1, 3, 1, 1))
             self.register_buffer("image_std", torch.tensor([0.229, 0.224, 0.225]).reshape(1, 3, 1, 1))
 
@@ -81,7 +87,7 @@ class ActionChunkTransformer(nn.Module):
             latent = torch.zeros((batch, self.config.latent), device=state.device)
         memory = torch.cat((state_token, self.latent_projection(latent)[:, None]), dim=1) + self.memory_positions
         if self.config.vision:
-            if images is None or images.shape[1] != 3:
+            if images is None or images.shape[1:] != (3, self.config.image_height, self.config.image_width):
                 raise ValueError("Visual ACT requires RGB observations")
             features = self.image_projection(self.backbone((images - self.image_mean) / self.image_std))
             image_tokens = features.flatten(2).transpose(1, 2)
@@ -105,14 +111,24 @@ class ActionChunkTransformer(nn.Module):
         prediction, _, _ = self(state, images=images)
         command = prediction * self.action_std + self.action_mean
         if self.config.relative_commands:
-            command = command + torch.cat((state[:, :7], state[:, 14:15]), dim=1)[:, None]
+            command = command + self.command_reference(state)[:, None]
         command[..., 7].clamp_(0, 0.044)
         return command
 
     def normalized_actions(self, actions, state):
         if self.config.relative_commands:
-            actions = actions - torch.cat((state[:, :7], state[:, 14:15]), dim=1)[:, None]
+            actions = actions - self.command_reference(state)[:, None]
         return (actions - self.action_mean) / self.action_std
+
+    def command_reference(self, state):
+        return state[:, :8] if self.config.state_dim == 9 else torch.cat((state[:, :7], state[:, 14:15]), dim=1)
+
+    def distillation_loss(self, state, actions, padding, images):
+        prediction, _, _ = self(state, images=images)
+        target = self.normalized_actions(actions, state)
+        valid = (~padding).unsqueeze(-1)
+        loss = ((prediction - target).abs() * valid).sum() / (valid.sum() * self.config.action_dim)
+        return loss, loss, loss.new_zeros(())
 
     def save(self, path: Path, **metadata):
         temporary = path.with_suffix(path.suffix + ".partial")
@@ -138,7 +154,8 @@ class ActionChunkTransformer(nn.Module):
 def normalization(dataset, relative_commands=False):
     action = dataset.command
     if relative_commands:
-        action = action - np.concatenate((dataset.state[:, :7], dataset.state[:, 14:15]), axis=1)
+        reference = dataset.state[:, :8] if dataset.state.shape[1] == 9 else np.concatenate((dataset.state[:, :7], dataset.state[:, 14:15]), axis=1)
+        action = action - reference
     return (dataset.state.mean(axis=0), np.maximum(dataset.state.std(axis=0), 0.01),
             action.mean(axis=0), np.maximum(action.std(axis=0), 0.001))
 

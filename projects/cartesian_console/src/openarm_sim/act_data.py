@@ -10,6 +10,7 @@ import torch
 
 from .warp_pickup import WarpPickupVecEnv, build_reset_bank
 from .paths import RUNS
+from .compute_guard import budgeted
 
 
 SCHEMA = "openarm.act_episodes.v1"
@@ -39,6 +40,15 @@ def limited_command(env: WarpPickupVecEnv, command: torch.Tensor) -> torch.Tenso
 
 def proprioception(observation: np.ndarray) -> np.ndarray:
     return np.concatenate((observation[..., :16], observation[..., 34:42]), axis=-1)
+
+
+def visual_state(observation: np.ndarray, elapsed_seconds, state_dim: int) -> np.ndarray:
+    if state_dim == 24:
+        return proprioception(observation)
+    if state_dim != 9:
+        raise ValueError("Unsupported visual state schema")
+    elapsed = np.broadcast_to(np.asarray(elapsed_seconds, dtype=observation.dtype), observation.shape[:-1])
+    return np.concatenate((observation[..., :7], observation[..., 14:15], elapsed[..., None]), axis=-1)
 
 
 def collect_reference(bank_path: Path, output: Path, episodes: int, worlds: int, seed: int) -> dict:
@@ -123,12 +133,13 @@ def collect_reference(bank_path: Path, output: Path, episodes: int, worlds: int,
 
 
 class EpisodeDataset:
-    def __init__(self, path: Path, chunk: int, student: bool = False):
+    def __init__(self, path: Path, chunk: int, student: bool = False, student_state="feedback"):
         self.path, self.chunk, self.student = path, chunk, student
         self.episodes = []
         with h5py.File(path) as file:
             if file.attrs["schema"] != SCHEMA:
                 raise ValueError("Unsupported ACT dataset")
+            self.image_resolution = tuple(file.attrs["image_resolution"]) if student else None
             for name, episode in file["episodes"].items():
                 if not episode.attrs["success"] and file.attrs.get("supervision", "executed") != "teacher_query":
                     raise ValueError("Imitation dataset contains an unsuccessful episode")
@@ -140,7 +151,10 @@ class EpisodeDataset:
                     raise ValueError("Non-finite ACT demonstration")
                 if np.any(command[:, 7] < 0) or np.any(command[:, 7] > 0.044001):
                     raise ValueError("Invalid gripper command units")
-                state = proprioception(observation) if student else observation
+                if student_state not in ("feedback", "position-clock"):
+                    raise ValueError("Unsupported student state schema")
+                elapsed = np.arange(len(command), dtype=np.float32) / float(file.attrs["control_hz"])
+                state = visual_state(observation, elapsed, 9 if student_state == "position-clock" else 24) if student else observation
                 self.episodes.append((name, state, command))
         if not self.episodes:
             raise ValueError("ACT dataset is empty")
@@ -168,6 +182,7 @@ class EpisodeDataset:
                 torch.as_tensor(np.array(images), device=device).permute(0, 3, 1, 2).float() / 255 if self.student else None)
 
 
+@budgeted("openarm_sim.act_data")
 def main():
     parser = argparse.ArgumentParser(description="Collect physical OpenArm reference-controller demonstrations")
     parser.add_argument("--output", type=Path, default=RUNS / "act/data")

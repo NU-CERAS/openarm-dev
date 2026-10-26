@@ -16,7 +16,7 @@ from .simulation import ReachSimulation
 class ReachDemo:
     target_clearance = 0.14
 
-    def __init__(self, width: int = 1280, height: int = 720, drumming: bool = False, task: str = "reach", planner: str = "curobo", drum_asset: Path | None = None):
+    def __init__(self, width: int = 1280, height: int = 720, drumming: bool = False, task: str = "reach", planner: str = "ompl", drum_asset: Path | None = None):
         if task == "kit" and drum_asset is None:
             raise ValueError("The kit scene requires --drum-asset manifest.json")
         if drum_asset is not None and task != "kit":
@@ -311,7 +311,7 @@ def main() -> None:
     parser.add_argument("--smoke-test", action="store_true", help="Click the real GUI, verify physical reach, and close")
     parser.add_argument("--scene", choices=["reach", "drum", "pickup", "strike", "kit"], default="reach", help="Choose a task or the imported electronic kit")
     parser.add_argument("--drum-asset", type=Path)
-    parser.add_argument("--planner", choices=["curobo", "mink"], default="curobo")
+    parser.add_argument("--planner", choices=["ompl", "curobo", "mink"], default="ompl")
     args = parser.parse_args()
     demo = ReachDemo(task=args.scene, planner=args.planner, drum_asset=args.drum_asset)
     if args.smoke_test:

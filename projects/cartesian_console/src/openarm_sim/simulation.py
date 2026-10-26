@@ -45,21 +45,31 @@ class ReachSimulation:
     table_height = 0.30
     control_period = 0.01
 
-    def __init__(self, drumming: bool = False, free_stick: bool = False, planner: str = "mink", planning_assets: Path = RUNS / "planning/openarm.yml", obstacles: tuple[dict, ...] = (), drum_asset: Path | None = None, worktable: bool = True):
-        if planner not in ("mink", "curobo"):
-            raise ValueError("planner must be mink or curobo")
+    def __init__(self, drumming: bool = False, free_stick: bool = False, planner: str = "mink", planning_assets: Path = RUNS / "planning/openarm.yml", obstacles: tuple[dict, ...] = (), drum_asset: Path | None = None, worktable: bool = True, tabletop_mount: bool = False):
+        if planner not in ("mink", "ompl", "curobo"):
+            raise ValueError("planner must be mink, ompl or curobo")
         self.planner_backend = planner
         self.planning_assets = planning_assets
         self.motion_planner = None
         self.trajectory = None
+        if tabletop_mount and (drum_asset is not None or not worktable):
+            raise ValueError("Tabletop mounting requires the worktable scene")
+        self.tabletop_mount = tabletop_mount
+        self.table_height = 0.0 if tabletop_mount else type(self).table_height
         free_stick = free_stick or drumming
         spec = mujoco.MjSpec.from_file(str(MODEL))
         if worktable:
             spec.worldbody.add_geom(
                 name="worktable", type=mujoco.mjtGeom.mjGEOM_BOX,
-                pos=[0.46, 0, self.table_height - 0.025], size=[0.30, 0.60, 0.025],
+                pos=[0.30, 0, -0.04] if tabletop_mount else [0.46, 0, self.table_height - 0.025],
+                size=[0.80, 0.65, 0.04] if tabletop_mount else [0.30, 0.60, 0.025],
                 rgba=[0.24, 0.32, 0.37, 1], friction=[0.8, 0.01, 0.001],
             )
+        if tabletop_mount:
+            spec.geom("floor").pos = [0, 0, -0.75]
+            for index, (x, y) in enumerate(((-0.43, -0.58), (-0.43, 0.58), (1.03, -0.58), (1.03, 0.58))):
+                spec.worldbody.add_geom(name=f"table_leg_{index}", type=mujoco.mjtGeom.mjGEOM_BOX,
+                                        pos=[x, y, -0.415], size=[0.035, 0.035, 0.335], rgba=[0.18, 0.22, 0.25, 1])
         self.drum_asset = None
         if drum_asset is not None:
             from .drum_asset import load_asset
@@ -219,16 +229,21 @@ class ReachSimulation:
             raise ValueError("Target must contain three finite coordinates")
         if self.status.state == "running":
             return ReachAcceptance(False, "Motion is running; wait for completion or cancel it")
-        if not (0.14 <= target[0] <= 0.70 and abs(target[1]) <= 0.52 and 0.34 <= target[2] <= 0.85):
+        if not (0.14 <= target[0] <= 0.70 and abs(target[1]) <= 0.52 and self.table_height + 0.04 <= target[2] <= 0.85):
             return ReachAcceptance(False, "Target is outside the demo workspace")
         if (arm == "right" and target[1] > -0.025) or (arm == "left" and target[1] < 0.025):
             return ReachAcceptance(False, "Select a target on the chosen arm's side")
         self.trajectory = None
-        if self.planner_backend == "curobo":
-            from .curobo_planner import CuroboPlanner
-
+        if self.planner_backend in ("ompl", "curobo"):
             if self.motion_planner is None:
-                self.motion_planner = CuroboPlanner(self, self.planning_assets)
+                if self.planner_backend == "curobo":
+                    from .planning.curobo import CuroboPlanner
+
+                    self.motion_planner = CuroboPlanner(self, self.planning_assets)
+                else:
+                    from .planning.ompl import OmplPlanner
+
+                    self.motion_planner = OmplPlanner(self)
             planning = self.motion_planner.plan(arm, target, orientation)
             if planning.trajectory is None:
                 return ReachAcceptance(False, planning.reason)

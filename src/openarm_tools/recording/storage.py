@@ -27,7 +27,9 @@ def lock(identity):
     # an active lock inode. Hardware key is independent of checkout/config.
     import fcntl
     name = hashlib.sha256(identity.encode()).hexdigest()[:24]
-    path = Path(tempfile.gettempdir()) / f'openarm-{name}.lock'
+    folder = Path.home() / '.cache' / 'openarm' / 'locks'
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f'openarm-{name}.lock'
     with path.open('a') as f:
         try:
             fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
