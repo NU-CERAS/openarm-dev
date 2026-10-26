@@ -118,6 +118,60 @@ The pickup/strike scenes demonstrate physical reference controllers and learning
 environment interfaces. They start no training and execute no physical hardware.
 The recorder captures only its private display's application window.
 
+### Learned-policy recording
+
+Install the learning and video extras in the environment with your compatible
+CUDA PyTorch installation:
+
+~~~bash
+python -m pip install -e './projects/cartesian_console[rl,gpu-sim,imitation,video,tracking]'
+openarm-record-policy --checkpoint /path/to/pickup_student.pt \
+  --bank /path/to/heldout_resets.npz \
+  --strike-checkpoint /path/to/trained_strike_checkpoint \
+  --console-video runs/cartesian_console/showcase/console.mp4 \
+  --episodes 3 --output runs/cartesian_console/policy_demo
+~~~
+
+This recording runs a visual ACT pickup student distilled from an ACT+PPO
+teacher, followed by a trained oracle residual-PPO strike actor. The pickup
+camera panel shows the exact RGB supplied to the student, with all site markers
+hidden. Its remaining inputs are seven arm positions, gripper position and
+controller elapsed time. Strike uses 51 oracle values and a nominal reference;
+its camera panel is an observer view. Each strike trial starts after the
+reference reset establishes a physical grasp and preparation pose.
+
+The strike checkpoint directory must contain policy.zip and vecnormalize.pkl,
+and its saved PPO training-step count must be positive. Pickup resets use
+consecutive indices starting at zero; strike uses consecutive evaluation seeds.
+The recorder retains every requested result, including failures, in
+demo_report.json and produces openarm_visual_demo.mp4. No training is started
+by the recording command. Use --console-start and --console-duration to select
+a segment from the actual interface recording.
+
+The [policy demonstration release](https://github.com/jixinyan/openarm-dev/releases/tag/cartesian-policy-demo-20261026)
+supplies the recorded policies and pickup reset bank. Download them under runs/:
+
+~~~bash
+mkdir -p runs/cartesian_console/policies
+curl -fL -o runs/cartesian_console/policies/pickup_student.pt \
+  https://github.com/jixinyan/openarm-dev/releases/download/cartesian-policy-demo-20261026/pickup_student.pt
+curl -fL -o runs/cartesian_console/policies/pickup_resets.npz \
+  https://github.com/jixinyan/openarm-dev/releases/download/cartesian-policy-demo-20261026/pickup_resets.npz
+curl -fL -o runs/cartesian_console/policies/oracle_strike.zip \
+  https://github.com/jixinyan/openarm-dev/releases/download/cartesian-policy-demo-20261026/oracle_strike.zip
+python -m zipfile -e runs/cartesian_console/policies/oracle_strike.zip \
+  runs/cartesian_console/policies/oracle_strike
+openarm-record-policy \
+  --checkpoint runs/cartesian_console/policies/pickup_student.pt \
+  --bank runs/cartesian_console/policies/pickup_resets.npz \
+  --strike-checkpoint runs/cartesian_console/policies/oracle_strike \
+  --episodes 3 --output runs/cartesian_console/policy_replay
+~~~
+
+This records both policies without the optional TCP console clip. These small
+demonstration samples describe the recorded resets; use separate evaluation
+banks and larger seed sets to assess task robustness.
+
 ## 6. Optional capabilities
 
 | Capability | Setup / command |

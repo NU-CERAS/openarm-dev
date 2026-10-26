@@ -65,6 +65,7 @@ openarm-train-act --help
 openarm-train-pickup-residual --help
 openarm-distill-act --help
 openarm-train-strike --help
+openarm-record-policy --help
 ```
 
 Install the corresponding extras for these workflows:
