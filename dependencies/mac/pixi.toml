@@ -1,0 +1,17 @@
+[workspace]
+name = "openarm-dev"
+channels = ["robostack-jazzy", "conda-forge"]
+platforms = ["osx-arm64"]
+
+[dependencies]
+python = "3.12.*"
+pip = "*"
+numpy = ">=1.26,<3"
+mujoco = ">=3.3,<4"
+pinocchio = ">=3,<4"
+ros-jazzy-desktop = ">=0.11,<0.12"
+ros-dev-tools = ">=1,<2"
+colcon-common-extensions = ">=0.3,<0.4"
+
+[pypi-dependencies]
+openarm-tools = {path = "../..", editable = true}

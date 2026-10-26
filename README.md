@@ -1,62 +1,73 @@
 # OpenArm Development
 
-A pair of humanoid robotic arms built on [OpenArm](https://github.com/enactic/openarm), designed to interact with art: playing instruments, and more. Built by CERAS @ Northwestern University.
+CERAS @ Northwestern University's shared foundation for OpenArm simulation, controls, and creative robotics.
 
-> **Status:** Early development. This README is preliminary and will evolve with the project.
+## Get started
 
----
+Clone with `git clone --recurse-submodules <repository-url>` and enter the checkout.
 
-## Overview
+| Machine | Setup | Open the simulator afterward |
+|---|---|---|
+| Apple Silicon Mac | `bash setup/mac.sh` | Activate Pixi below, then `mjpython scripts/sim.py` |
+| Ubuntu 24.04 | `bash setup/linux.sh` | Activate ROS and `.venv` below, then `openarm sim` |
+| Windows 11 + WSL2 | `powershell -ExecutionPolicy Bypass -File setup/windows.ps1` | Open the WSL checkout, activate ROS and `.venv`, then `openarm sim` |
 
-Building a bimanual robot from the open-source OpenArm platform and teaching it to engage with creative work and art, such as musical instruments and other artistic interactions.
+Mac terminal activation (use `~/.pixi/bin/pixi` if it is not on PATH):
 
-This repo is the team's working space. It holds everything: production code, simulations, experiments, and work in progress.
-
-## Goals
-
-- Assemble and operate a pair of OpenArm humanoid arms
-- Develop autonomy in simulation before deploying to hardware
-- Achieve controlled interaction with an instrument
-- Expand to other forms of artistic interaction
-
-## Subteams
-
-| Subteam | Focus |
-|---|---|
-| **Software / Autonomy** | Simulation in MuJoCo, ROS 2 integration, motion planning, learning |
-| **Controls** | Low-level motor control, hardware interfacing, sim-to-real |
-| **Mechanical** | Hardware design & modifications, assembly, and more |
-
-## Software Stack
-
-- **ROS 2 Jazzy** for middleware and robot software framework
-- **MuJoCo** for physics simulation
-- **Ubuntu 24.04** (native or WSL2)
-
-## Repository Structure
-
-> WIP, updating as the layout settles.
-
-```
-openarm-dev/
-├── autonomy-dev/       # Autonomy code, using ROS2 Jazzy & MuJoCo
-├── controls-dev/       # Controls subteam code
-├── mechanical-dev/     # CAD, drawings, assembly notes
-└── installation/       # Setup guides & notes for different systems
+```sh
+pixi shell --manifest-path dependencies/mac/pixi.toml
+openarm doctor --profile ros
+mjpython scripts/sim.py
 ```
 
-## Roadmap
+Ubuntu / WSL terminal activation:
 
-- [ ] Simulation environment for both arms in MuJoCo
-- [ ] ROS 2 ↔ MuJoCo integration
-- [ ] Basic control on physical arms
-- [ ] First instrument interactions
-- [ ] *More to come*
+```sh
+source /opt/ros/jazzy/setup.bash
+source .venv/bin/activate
+openarm doctor --profile ros
+openarm sim
+```
 
-## Acknowledgments
+Setup installs ROS Jazzy, MuJoCo, Pinocchio and shared tools. Windows runs ROS and MuJoCo together **inside WSL**, not as separate Windows/WSL processes. SocketCAN hardware access requires Linux and a compatible adapter. See [setup](setup/README.md) for optional ROS-control builds and CAN bindings.
 
-Built on [OpenArm](https://github.com/enactic/openarm) by Enactic.
+## Common commands
 
-## License
+Simulation is the default. Angles and increments are radians. Commands work from any directory after editable installation.
 
-TBD
+```sh
+openarm status
+openarm zero                         # preview the software zero reference
+openarm zero --execute               # record current joint positions as zero
+openarm home                        # preview return to recorded zero/default home
+openarm home --execute --duration 10
+openarm jog openarm_left_joint1 0.05 --execute
+openarm pose save ready
+openarm pose move ready --execute
+openarm sim --headless --seconds 1
+```
+
+The equivalents in `scripts/` call the same shared implementation. Use `--help` after a command for options. Hardware instructions and release behavior are in [docs/hardware.md](docs/hardware.md). `can-check` is a hardware diagnostic; it never enables motors.
+
+## Structure
+
+- `dependencies/`: environment manifests and pinned upstream revisions.
+- `setup/`: platform installers; Windows delegates to the Ubuntu installer.
+- `scripts/`: common command entry points.
+- `src/openarm_tools/`: shared configuration, backends, motion, calibration, recording.
+- `src/ros/`: ROS integration; `src/vendor/`: upstream sources.
+- `robots/`: explicitly versioned models, joint configuration, and reviewed poses.
+- `projects/`: independent clients of the shared tools. [Cartesian Console](projects/cartesian_console/README.md) contains camera reach, drumming simulation, and ACT/RL skill learning; other project directories contain starting points.
+- `examples/`: small executable tutorials; `mechanical/`: CAD/documentation.
+- `docs/`: architecture and operation; `tests/`: behavior checks.
+- `runs/`: local simulation snapshots, calibration and saved poses; ignored by Git.
+
+Read [architecture](docs/architecture.md) before adding a backend or changing coordinate conventions.
+
+## Validation
+
+```sh
+python -m unittest discover -s tests -v
+```
+
+Physical arm commissioning and platform setup verification are separate from simulation tests. The shipped hardware mappings/gains are templates, not validated calibrations for your particular arms.

@@ -1,20 +1,17 @@
-# ROS 2 build artifacts
-/build/
-/install/
-/log/
-
-# Python cache
-__pycache__/
-*.pyc
+# Generated environments and output
 .venv/
-
-# MuJoCo warning log written on exit
-MUJOCO_LOG.TXT
-
-# macOS
-.DS_Store
-
-# Local run records and intermediate artifacts
-/.work/
+.pixi/
+build/
+install/
+log/
+runs/*
+!runs/.gitkeep
 *.egg-info/
+__pycache__/
+*.py[cod]
+.DS_Store
+# Optional fetched source; existing upstream repos remain submodules
+src/vendor/openarm_can/
+MUJOCO_LOG.TXT
+/.work/
 .pytest_cache/

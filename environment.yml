@@ -1,9 +1,0 @@
-name: mujoco
-channels:
-  - conda-forge
-dependencies:
-  - python=3.12.15
-  - numpy=2.5.4
-  - pip
-  - pip:
-      - "-e .[dev,agent]"
