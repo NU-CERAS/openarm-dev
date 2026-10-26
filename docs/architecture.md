@@ -20,6 +20,13 @@ MuJoCo steps physics. Torque-actuated v0.3 models use a basic bounded PD plus bi
 
 ## Source ownership
 
+`projects/cartesian_console` is an independently installable `openarm-sim`
+distribution. It uses `openarm_tools.robot.config` for the repository root,
+canonical v1.0 model and joint order. Task simulation owns a synchronized
+bimanual state and stores its generated files under `runs/cartesian_console/`.
+Its ROS adapter uses the existing controller topics. Shared CLI sessions retain
+their existing behavior and persistence format.
+
 Keep upstream submodules intact. Canonical team-owned robot assets live under `robots/`; the ROS package installs the v1.0 assets into its package share during a colcon build. Rebuild after model changes. Version v0.3 and v1.0 have different joint names and must not be interchanged.
 
 Promote reusable logic from projects into the shared package. Store local calibration/results under ignored `runs/`; commit only reviewed configuration and small reproducible fixtures. Do not commit generated `build/`, `install/`, `log/`, `.venv/` or `.pixi/` folders.
