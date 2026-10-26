@@ -4,6 +4,9 @@ OpenArm tabletop simulation, feedback-driven hardware synchronization, collision
 avoidance and skill learning. The default OMPL planner runs on CPU. cuRobo is an
 optional CUDA backend.
 
+Use the [fresh-checkout guide](docs/getting-started.md) for a complete CPU setup,
+first launch, feature recording and the physical connection placeholders.
+
 ## Install
 
 From the repository root, using Python 3.12 or newer:

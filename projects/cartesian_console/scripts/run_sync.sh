@@ -3,8 +3,8 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_DIR="$(cd -- "$PROJECT_DIR/../.." && pwd)"
-PYTHON_BIN="${OPENARM_PYTHON:-$HOME/miniforge3/envs/mujoco/bin/python}"
-if [[ ! -x "$PYTHON_BIN" ]]; then
+PYTHON_BIN="${OPENARM_PYTHON:-python3}"
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
     echo "Set OPENARM_PYTHON to the Python executable with openarm-sim installed." >&2
     exit 1
 fi

@@ -53,6 +53,7 @@ openarm-train-strike = "openarm_sim.training.strike_train:main"
 openarm-train-skills = "openarm_sim.training.skill_pipeline:main"
 openarm-compute = "openarm_sim.compute_guard:main"
 openarm-sync = "openarm_sim.console.app:main"
+openarm-showcase = "openarm_sim.console.showcase:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

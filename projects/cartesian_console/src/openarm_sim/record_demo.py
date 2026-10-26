@@ -106,10 +106,10 @@ class DemoRecorder:
         self.path.with_suffix(".jsonl").write_text("".join(json.dumps(frame) + "\n" for frame in self.trace))
 
 
-def record_reach(recorder):
-    with ReachSimulation(planner="curobo") as sim:
-        recorder.attach(sim, "01  Camera-guided reach", ["cuRobo motion planning", "Collision-aware trajectory", "Physical position servos"])
-        recorder.hold(2.0, ["Select a tabletop pixel in the calibrated head-camera image.", "Known table height converts the pixel ray into a 3D reach target."], ["Planner: cuRobo", "Arms: 7 DoF each"])
+def record_reach(recorder, planner="ompl"):
+    with ReachSimulation(planner=planner) as sim:
+        recorder.attach(sim, "01  Camera-guided reach", [f"{planner.upper()} motion planning", "Collision-aware trajectory", "Physical position servos"])
+        recorder.hold(2.0, ["Select a tabletop pixel in the calibrated head-camera image.", "Known table height converts the pixel ray into a 3D reach target."], [f"Planner: {planner.upper()}", "Arms: 7 DoF each"])
         for arm, point in [("right", [0.43, -0.24, 0.30]), ("left", [0.45, 0.24, 0.30])]:
             frame = recorder.head.capture(sim.data)
             pixel = recorder.head.project(np.array(point), frame)
@@ -124,7 +124,7 @@ def record_reach(recorder):
             while sim.status.state == "running" and sim.data.time < deadline:
                 sim.step()
                 recorder.capture([f"{arm.capitalize()} arm | pixel {pixel} | target [m]: {np.round(target, 3).tolist()}",
-                                  "GPU planning + timed trajectory execution with actual TCP feedback."],
+                                  "Planned trajectory execution with actual simulated TCP feedback."],
                                  [f"Arm: {arm}", f"TCP error: {sim.status.error_m * 1000:.1f} mm", f"State: {sim.status.state}"])
             if sim.status.state != "succeeded":
                 raise RuntimeError(f"Recorded reach failed: {sim.status}")
@@ -176,9 +176,9 @@ def record_strike(recorder):
         recorder.detach()
 
 
-def record_obstacle(recorder):
+def record_obstacle(recorder, planner="ompl"):
     obstacle = {"name": "reach_obstacle", "position": [0.4, -0.24, 0.4], "half_size": [0.012, 0.012, 0.08]}
-    with ReachSimulation(planner="curobo", obstacles=(obstacle,)) as sim:
+    with ReachSimulation(planner=planner, obstacles=(obstacle,)) as sim:
         target = np.array([0.52, -0.35, 0.44])
         goal = sim._solve("right", target)
         data = mujoco.MjData(sim.model)
@@ -189,21 +189,21 @@ def record_obstacle(recorder):
             blocked_samples += sim._collision(data)
         if blocked_samples == 0:
             raise RuntimeError("The obstacle demonstration requires a blocked direct joint path")
-        recorder.attach(sim, "02  Obstacle-aware motion planning", ["cuRobo trajectory optimizer", "Static obstacle geometry", "Physical trajectory tracking"])
-        recorder.hold(2.0, ["A red obstacle intersects the direct joint-interpolation path.", "cuRobo searches for a collision-free trajectory to the same target."],
-                      ["Obstacle: present", f"Blocked samples: {blocked_samples}/40", "Planner: cuRobo"])
+        recorder.attach(sim, "02  Obstacle-aware motion planning", [f"{planner.upper()} path planning", "Static obstacle geometry", "Physical trajectory tracking"])
+        recorder.hold(2.0, ["A red obstacle intersects the direct joint-interpolation path.", f"{planner.upper()} searches for a collision-free trajectory to the same target."],
+                      ["Obstacle: present", f"Blocked samples: {blocked_samples}/40", f"Planner: {planner.upper()}"])
         result = sim.start_reach("right", target)
         if not result.accepted:
             raise RuntimeError(result.reason)
         deadline = sim.data.time + sim.trajectory.duration + 5
         while sim.status.state == "running" and sim.data.time < deadline:
             sim.step()
-            recorder.capture(["Following the cuRobo path around the obstacle.", "Every recorded robot state comes from MuJoCo dynamics."],
+            recorder.capture([f"Following the {planner.upper()} path around the obstacle.", "Every recorded robot state comes from MuJoCo dynamics."],
                              ["Obstacle: present", f"TCP error: {sim.status.error_m * 1000:.1f} mm", f"State: {sim.status.state}"])
         if sim.status.state != "succeeded":
             raise RuntimeError(f"Recorded obstacle reach failed: {sim.status}")
         recorder.hold(2.0, ["Collision-free reach completed with the obstacle in place.", "The final TCP error is measured from the physical simulation state."],
-                      ["State: reached", f"Final error: {sim.status.error_m * 1000:.2f} mm", "Planner: cuRobo"])
+                      ["State: reached", f"Final error: {sim.status.error_m * 1000:.2f} mm", f"Planner: {planner.upper()}"])
         recorder.detach()
 
 
@@ -246,6 +246,7 @@ def record_kit(recorder, manifest: Path):
 def main():
     parser = argparse.ArgumentParser(description="Record actual OpenArm simulation execution as an English-captioned MP4")
     parser.add_argument("--output", type=Path, default=RUNS / "demo/openarm_demo.mp4")
+    parser.add_argument("--planner", choices=["ompl", "curobo"], default="ompl")
     assets = parser.add_mutually_exclusive_group()
     assets.add_argument("--drum-asset", type=Path, help="Record only the imported kit")
     assets.add_argument("--include-kit", type=Path, help="Append the imported kit to the skill demonstration")
@@ -255,8 +256,8 @@ def main():
         if args.drum_asset is not None:
             record_kit(recorder, args.drum_asset)
         else:
-            record_reach(recorder)
-            record_obstacle(recorder)
+            record_reach(recorder, args.planner)
+            record_obstacle(recorder, args.planner)
             record_pickup(recorder)
             record_strike(recorder)
             if args.include_kit is not None:

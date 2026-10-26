@@ -8,8 +8,8 @@ From the repository root:
 bash projects/cartesian_console/scripts/run_sync.sh
 ```
 
-The launcher uses `$HOME/miniforge3/envs/mujoco/bin/python`. Set
-`OPENARM_PYTHON` to select another environment with this project installed.
+The launcher uses `python3` from the active environment. Set `OPENARM_PYTHON`
+to select an explicit interpreter with this project installed.
 It sets the project cache directory, limits CPU threads, obtains the shared
 compute slot and opens the English interface. No ROS services are needed for
 the direct SocketCAN adapter. The robot transport, live twin, trajectory planner
