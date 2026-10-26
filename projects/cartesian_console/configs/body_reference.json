@@ -1,0 +1,8 @@
+{
+  "name": "torso_top_center",
+  "body": "openarm_body_link0",
+  "site": "torso_top_reference",
+  "position_m": [-0.00975, 0.0, 0.773],
+  "quaternion_wxyz": [1.0, 0.0, 0.0, 0.0],
+  "surface_geom": "openarm_body_link0_visual_5"
+}

@@ -5,8 +5,10 @@ import time
 
 import numpy as np
 import pytest
+import mujoco
 
-from openarm_sim.paths import PROJECT_ROOT, RUNS
+from openarm_sim.paths import BODY_REFERENCE, PROJECT_ROOT, RUNS
+from openarm_sim.simulation import ReachSimulation
 from openarm_sim.console.session import RobotWorker, SyncSession, check_start, hardware_configuration
 from openarm_tools.recording.storage import lock
 
@@ -27,6 +29,10 @@ def test_physical_execution_feedback_preview_and_saved_target():
         assert worker.ready.wait(10)
         worker.read()
         session = SyncSession(worker)
+        np.testing.assert_allclose(session.reference.origin_m, [-0.00975, 0, 0.773], atol=1e-12)
+        np.testing.assert_allclose(session.reference.rotation, np.eye(3), atol=1e-12)
+        np.testing.assert_allclose(session.reference.to_world([43.975, -24, -33.3]), [0.43, -0.24, 0.44], atol=1e-12)
+        np.testing.assert_allclose(session.reference.from_world([0.43, -0.24, 0.44]), [43.975, -24, -33.3], atol=1e-12)
         assert session.twin.table_height == 0.0
         table = session.twin.model.geom("worktable").id
         assert session.twin.model.geom_pos[table, 2] + session.twin.model.geom_size[table, 2] == 0.0
@@ -35,7 +41,7 @@ def test_physical_execution_feedback_preview_and_saved_target():
         assert session.prepare("left", [0.43, -0.24, 0.44]) is None
         assert session.plan is None
         assert "chosen arm" in session.rejection_reason
-        plan = session.prepare("right", [0.43, -0.24, 0.44])
+        plan = session.prepare_relative("right", [43.975, -24, -33.3])
         assert plan is not None
         session.show_preview(plan.trajectory.duration)
         np.testing.assert_allclose(session.sync().positions["right"], initial, atol=0.002)
@@ -43,6 +49,7 @@ def test_physical_execution_feedback_preview_and_saved_target():
         session.execute()
         wait_for(worker, "completed")
         feedback = session.sync()
+        np.testing.assert_allclose(session.twin.data.site_xpos[session.twin.model.site("torso_top_reference").id], session.reference.origin_m, atol=1e-12)
         np.testing.assert_array_equal(session.twin.data.qpos[session.twin.qpos_ids["right"]], feedback.positions["right"])
         assert np.linalg.norm(session.twin.tcp_position("right") - plan.target) < 0.015
         assert worker.report["final_joint_error_rad"] < 0.03
@@ -55,6 +62,8 @@ def test_physical_execution_feedback_preview_and_saved_target():
         np.testing.assert_array_equal(target, plan.target)
         saved = json.loads(output.read_text())["targets"]["pad_approach"]
         assert saved["execution_state"] == "completed"
+        assert saved["reference_site"] == "torso_top_reference"
+        np.testing.assert_allclose(saved["target_relative_cm"], [43.975, -24, -33.3], atol=1e-12)
         np.testing.assert_allclose(saved["observed_joint_positions_rad"], feedback.positions["right"], atol=0.002)
         session.prepare("right", [0.44, -0.24, 0.44])
         session.save(output, "next_target")
@@ -140,3 +149,32 @@ def test_shared_ownership_lock_works_across_processes_and_cache_settings():
     process.join(timeout=15)
     assert process.exitcode == 0
     results.close()
+
+
+def test_torso_reference_lies_on_the_actual_top_housing_surface():
+    with ReachSimulation(tabletop_mount=True) as sim:
+        origin = sim.data.site_xpos[sim.model.site(BODY_REFERENCE["site"]).id]
+        distance = mujoco.mj_rayMesh(sim.model, sim.data, sim.model.geom(BODY_REFERENCE["surface_geom"]).id,
+                                     origin + [0, 0, 0.1], np.array([0.0, 0.0, -1.0]))
+        assert abs(distance - 0.1) < 0.0002
+
+
+@pytest.mark.parametrize("arm,y", [("right", -25), ("left", 25)])
+def test_default_torso_relative_coordinates_reach_through_actual_physics(arm, y):
+    worker = RobotWorker(realtime=False)
+    session = None
+    try:
+        assert worker.ready.wait(10)
+        session = SyncSession(worker)
+        plan = session.prepare_relative(arm, [40, y, -30])
+        assert plan is not None, session.rejection_reason
+        session.execute()
+        wait_for(worker, "completed")
+        session.sync()
+        np.testing.assert_allclose(session.reference.from_world(session.twin.tcp_position(arm)),
+                                   [40, y, -30], atol=1.0)
+    finally:
+        if session is not None:
+            session.close()
+        else:
+            worker.close()

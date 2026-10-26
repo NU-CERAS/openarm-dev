@@ -26,7 +26,18 @@ bash projects/cartesian_console/scripts/run_sync.sh --planner curobo
 The default scene places OpenArm on a 1.6 x 1.3 m workbench with a 0.75 m
 height above the floor. The table surface and robot mounting plane define
 sim Z=0; robot kinematics retain their original root coordinates. The overview
-opens automatically. Click clearance is measured above this tabletop.
+opens automatically. The interface uses centimeters relative to the fixed
+torso top center, identified by the `torso_top_reference` site on the fixed
+chassis. The point is centered on the upper surface of the torso's top housing.
+Its location in the v1.0 model is `(-0.00975, 0, 0.773)` meters in the robot root
+frame, 77.3 cm above the mounting plane. The viewport marks this origin and its
++X/+Y/+Z axes. The definition is stored in `configs/body_reference.json`.
+
+X points forward, Y points to the robot's left, and Z points up. For example,
+`(40, -25, -30) cm` requests a TCP 40 cm forward, 25 cm to the right and
+30 cm below the torso top center. This is the default target. The point remains
+fixed as the arms move.
+Internal planning and actuator interfaces retain their existing meter/radian units.
 See [motion planning](motion-planning.md) for CPU software rendering, cuRobo
 installation and direct IK mode.
 
@@ -38,28 +49,38 @@ hardware adapter. It does not establish physical robot performance.
 
 ## Operator workflow
 
-1. Select the right or left arm. Enter XYZ coordinates in meters, or click a
-   surface in the simulation preview. Click clearance is a world-Z offset.
-2. Use the adjustment buttons to change the selected sim coordinate. Use current
-   TCP copies the robot feedback's forward-kinematic position into the fields.
-3. Select **Plan / Preview**. The live view continues following feedback while
-   the separate preview shows the proposed motion. The target is marked orange.
-   An unreachable or opposite-side target displays its rejection reason and
-   leaves execution disabled; adjust the coordinate or arm selection and retry.
-4. Select **Execute on robot** to send that trajectory. Motion is never started
-   by connecting, changing a coordinate, loading a target or previewing.
-5. Observe the physical arm directly. Adjust the sim coordinate and repeat the
-   preview/execution until the physical position is satisfactory.
-6. Give the target a name and select **Save target + observed joints**. The file
-   stores the requested sim target, planned final joints, current measured
-   joints, forward-kinematic sim TCP, execution state and backend.
-7. **Load target** restores the coordinate. Create a new preview from current
-   feedback before execution. The recorded trajectory start is checked against
-   both arms immediately before execution; a change above 0.03 rad rejects it.
+1. Select **Right arm** or **Left arm**. Enter X/Y/Z in centimeters relative to
+   the torso top origin. Click the tabletop to select X/Y and automatically create
+   a motion preview. Z remains the entered torso-relative coordinate.
+   For typed coordinates, select **Preview reach** after editing.
+2. Check **Preview** mode. The orange marker identifies the TCP target. Use
+   **Live** to inspect measured robot posture. An unreachable or opposite-side
+   point displays guidance and leaves **Move robot** disabled.
+3. Select **Move robot**. The viewport switches to **Live** and the robot executes
+   the checked trajectory. **Stop** cancels motion. Connecting, selecting a target,
+   loading a position and previewing start no physical movement.
+4. Observe the physical arm directly. Adjust the sim target and repeat until the
+   physical position is satisfactory. The **Adjust** tab provides small XYZ
+   increments in centimeters; **Use current TCP** displays the current TCP
+   relative to the same torso top origin.
+5. After reaching the target, enter a name under **Saved positions** and choose
+   **Save this position**. The file stores the sim target, planned final joints,
+   measured joints, model-derived TCP, execution state and backend. The file
+   also records the reference site, its transform and target coordinates in cm.
+6. **Load position** restores a saved target and creates a fresh preview from
+   current feedback. It becomes available after a matching position is saved.
+   Execution checks both arms against the preview start; changes above 0.03 rad
+   reject the trajectory.
+
+The viewport renders at its native pixel dimensions, initially up to 1280 x 760.
+Resizing rebuilds the renderers for the available area, up to 1920 x 1080, without
+enlarging a low-resolution image. Text and target markers use native Tk drawing.
+Joint values and planner details are available in the **Feedback** tab.
 
 Targets are stored in `runs/cartesian_console/sync/targets.json` by default.
 `--targets PATH` selects another file. Each GUI session writes preview trajectories,
 feedback JSONL and execution reports under `runs/cartesian_console/sync/sessions/`.
+The session log also records selected target coordinates and planning rejections.
 The console's default joint speed limit is 0.2 rad/s, with 0.5 rad/s² acceleration;
 hardware's configured speed can reduce that limit further.
 

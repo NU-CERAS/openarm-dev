@@ -122,3 +122,30 @@ def test_camera_adjustment_keeps_pixel_geometry_consistent():
         np.testing.assert_allclose(camera.unproject(*pixel, first), original)
         pixel = camera.project(np.array([0.52, -0.32, sim.table_height]), second)
         assert np.linalg.norm(camera.unproject(*pixel, second) - [0.52, -0.32, sim.table_height]) < 0.004
+
+
+@pytest.mark.parametrize("arm,sign", [("right", -1), ("left", 1)])
+def test_tabletop_pixel_selects_xy_at_a_reachable_tcp_height(arm, sign):
+    with ReachSimulation(planner="ompl", tabletop_mount=True) as sim, OverheadCamera(sim.model, 1280, 720, 0.0) as camera:
+        sim.set_camera(np.array([1.55, 1.15, 1.25]), np.array([0.25, 0, 0.25]), 48)
+        frame = camera.capture(sim.data)
+        surface = np.array([0.43, sign * 0.24, 0.0])
+        pixel = camera.project(surface, frame)
+        selected = camera.intersect_plane(*pixel, frame, 0.0)
+        np.testing.assert_allclose(selected, surface, atol=0.003)
+        target = np.array([selected[0], selected[1], 0.44])
+        result = sim.start_reach(arm, target)
+        assert result.accepted, result.reason
+        for _ in range(15000):
+            sim.step()
+            if sim.status.state != "running":
+                break
+        assert sim.status.state == "succeeded", sim.status
+        assert np.linalg.norm(sim.tcp_position(arm) - target) < 0.01
+
+
+def test_sky_click_has_no_forward_tabletop_intersection():
+    with ReachSimulation(tabletop_mount=True) as sim, OverheadCamera(sim.model, 640, 360, 0.0) as camera:
+        sim.set_camera(np.array([0.5, 0, 1.0]), np.array([1.5, 0, 1.0]), 48)
+        frame = camera.capture(sim.data)
+        assert camera.intersect_plane(320, 0, frame, 0.0) is None

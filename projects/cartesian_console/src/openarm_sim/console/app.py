@@ -6,169 +6,320 @@ import tkinter as tk
 from tkinter import ttk
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageTk
+from PIL import Image, ImageTk
 
 from openarm_tools.recording.storage import write_json
 
 from ..camera import OverheadCamera
 from ..compute_guard import budgeted, check_resources
-from ..paths import RUNS
 from ..execution import joint_names
-from .session import RobotWorker, SyncSession, hardware_configuration
+from ..paths import RUNS
+from .session import RobotWorker, SyncSession, apply_feedback, hardware_configuration
 
 
 class SyncConsole:
-    def __init__(self, session: SyncSession, targets: Path, width=640, height=360):
-        self.session = session
-        self.targets = targets
+    def __init__(self, session: SyncSession, targets: Path, width=None, height=None):
+        self.session, self.targets = session, targets
         self.session.sync()
         self.root = tk.Tk()
-        self.root.title(f"OpenArm | Sim-to-real console | {session.worker.backend.upper()}")
+        self.root.title("OpenArm | Tabletop reach")
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.root.report_callback_exception = self.callback_error
+        self.width = width or min(1280, max(640, self.root.winfo_screenwidth() - 390))
+        self.height = height or min(760, max(400, self.root.winfo_screenheight() - 240))
+        self.root.minsize(980, 620)
+        self.root.geometry(f"{self.width + 340}x{self.height + 190}")
         self.error = None
         self.closed = False
         self.preview_started = None
         self.last_report = None
+        self.last_state = None
+        self.frame = None
+        self.frame_index = 0
+        self.resize_pending = None
+        self.saved_names = set()
         self.session_directory = RUNS / "sync/sessions" / str(time.time_ns())
         self.session_directory.mkdir(parents=True)
         self.feedback_log = (self.session_directory / "feedback.jsonl").open("x")
         self.arm = tk.StringVar(value="right")
-        initial_target = (0.43, -0.34, 0.56) if session.preview.drum_asset is not None else (0.43, -0.24, 0.44)
-        self.coordinates = [tk.StringVar(value=str(value)) for value in initial_target]
-        self.increment = tk.StringVar(value="0.01")
-        self.clearance = tk.StringVar(value="0.14")
+        initial_target_cm = session.reference.from_world([0.43, -0.34, 0.56]) if session.preview.drum_asset else (40, -25, -30)
+        self.coordinates = [tk.StringVar(value=f"{value:.2f}") for value in initial_target_cm]
+        self.increment = tk.StringVar(value="1")
         self.name = tk.StringVar(value="target_1")
-        self.message = tk.StringVar(value="Connected. Select a sim target and create a preview.")
+        self.display_mode = tk.StringVar(value="Live")
+        self.message = tk.StringVar(value="Click the tabletop to preview a reach. Then choose Move robot.")
+        self.view_label = tk.StringVar(value="LIVE ROBOT")
+        self.connection = tk.StringVar()
         self.feedback_text = tk.StringVar()
-        controls = ttk.Frame(self.root, padding=8)
-        controls.pack(fill="x")
-        ttk.Label(controls, text="Arm").pack(side="left")
-        selector = ttk.Combobox(controls, textvariable=self.arm, values=["right", "left"], state="readonly", width=7)
-        selector.pack(side="left", padx=4)
-        for axis, variable in zip("XYZ", self.coordinates):
-            ttk.Label(controls, text=f"{axis} [m]").pack(side="left")
-            ttk.Entry(controls, textvariable=variable, width=9).pack(side="left", padx=3)
-        ttk.Button(controls, text="Use current TCP", command=self.use_tcp).pack(side="left", padx=5)
-        self.preview_button = ttk.Button(controls, text="Plan / Preview", command=self.plan)
-        self.preview_button.pack(side="left", padx=5)
-        self.execute_button = ttk.Button(controls, text="Execute on robot", command=self.execute, state="disabled")
-        self.execute_button.pack(side="left", padx=5)
-        ttk.Button(controls, text="Cancel motion", command=self.cancel).pack(side="left", padx=5)
-        adjustments = ttk.Frame(self.root, padding=(8, 0, 8, 6))
-        adjustments.pack(fill="x")
-        ttk.Label(adjustments, text="Adjustment [m]").pack(side="left")
-        ttk.Entry(adjustments, textvariable=self.increment, width=7).pack(side="left", padx=4)
-        for index, axis in enumerate("XYZ"):
-            for direction in (-1, 1):
-                ttk.Button(adjustments, text=f"{axis}{'+' if direction > 0 else '-'}", width=4,
-                           command=lambda i=index, d=direction: self.adjust(i, d)).pack(side="left", padx=2)
-        ttk.Label(adjustments, text="Click clearance [m]").pack(side="left", padx=6)
-        ttk.Entry(adjustments, textvariable=self.clearance, width=7).pack(side="left")
-        ttk.Button(adjustments, text="Overview", command=lambda: self.view(True)).pack(side="left", padx=8)
-        ttk.Button(adjustments, text="Robot view", command=lambda: self.view(False)).pack(side="left")
-        saved = ttk.Frame(self.root, padding=(8, 0, 8, 6))
-        saved.pack(fill="x")
-        ttk.Label(saved, text="Saved target").pack(side="left")
-        self.names = ttk.Combobox(saved, textvariable=self.name, width=28)
-        self.names.pack(side="left", padx=5)
-        ttk.Button(saved, text="Save target + observed joints", command=self.save).pack(side="left", padx=5)
-        ttk.Button(saved, text="Load target", command=self.load).pack(side="left", padx=5)
-        ttk.Label(saved, text="Loading requires a new preview before execution.").pack(side="left", padx=8)
-        views = ttk.Frame(self.root)
-        views.pack()
-        self.canvases = []
-        self.image_items = []
-        self.photos = [None, None]
-        self.cameras = []
-        for index, (title, sim) in enumerate((("Live robot joint feedback", session.twin),
-                                            ("Simulation trajectory preview - click to select target", session.preview))):
-            panel = ttk.LabelFrame(views, text=title)
-            panel.grid(row=0, column=index)
-            canvas = tk.Canvas(panel, width=width, height=height, highlightthickness=0)
-            canvas.pack()
-            self.canvases.append(canvas)
-            self.image_items.append(canvas.create_image(0, 0, anchor="nw"))
-            self.cameras.append(OverheadCamera(sim.model, width, height, sim.table_height))
-        self.canvases[1].bind("<Button-1>", self.click)
-        ttk.Label(self.root, textvariable=self.message, padding=(8, 5), wraplength=1260).pack(fill="x")
-        ttk.Label(self.root, textvariable=self.feedback_text, padding=(8, 5)).pack(fill="x")
-        text = "DEMO: a separate MuJoCo robot executes commands and supplies feedback. No camera input."
-        if session.worker.backend == "can":
-            text = "CAN: seven arm joints only; grippers are unchanged. Motors release after motion/cancel. Support both arms."
-        ttk.Label(self.root, text=text, padding=(8, 5)).pack(fill="x")
+        self.detail_text = tk.StringVar()
+        self._style()
+        self._layout()
+        self.cameras = [OverheadCamera(sim.model, self.width, self.height, sim.table_height)
+                        for sim in (session.twin, session.preview)]
         self.camera_defaults = [(sim.model.cam_pos[camera.camera_id].copy(), sim.camera_look_at.copy(),
                                  float(sim.model.cam_fovy[camera.camera_id]))
                                 for sim, camera in zip((session.twin, session.preview), self.cameras)]
-        if session.twin.tabletop_mount:
-            self.view(True)
+        self.view(True)
         for variable in [self.arm, *self.coordinates]:
             variable.trace_add("write", self.invalidate)
+        self.name.trace_add("write", self.update_load_button)
         self.refresh_names()
-        self.frame = None
+        self.canvas.bind("<Configure>", self.schedule_resize)
         self.tick()
+
+    def _style(self):
+        style = ttk.Style(self.root)
+        style.theme_use("clam")
+        self.root.option_add("*Font", "{DejaVu Sans} 11")
+        style.configure(".", font=("DejaVu Sans", 11))
+        style.configure("TFrame", background="#f3f5f8")
+        style.configure("TLabel", background="#f3f5f8", foreground="#172b4d")
+        style.configure("TButton", padding=(10, 8), font=("DejaVu Sans", 11))
+        style.configure("Title.TLabel", font=("DejaVu Sans", 20, "bold"))
+        style.configure("Step.TLabel", font=("DejaVu Sans", 12, "bold"))
+        style.configure("Muted.TLabel", foreground="#46566e", font=("DejaVu Sans", 10))
+        style.configure("Primary.TButton", foreground="white", background="#245bd7", font=("DejaVu Sans", 12, "bold"))
+        style.map("Primary.TButton", background=[("disabled", "#d5dce8"), ("active", "#1746ae")],
+                  foreground=[("disabled", "#59677b")])
+        style.configure("Stop.TButton", foreground="#a61b2b", font=("DejaVu Sans", 12, "bold"))
+        style.configure("Status.TLabel", padding=(12, 10), background="#e5edf9", font=("DejaVu Sans", 11))
+
+    def _layout(self):
+        header = ttk.Frame(self.root, padding=(18, 12))
+        header.pack(fill="x")
+        ttk.Label(header, text="OpenArm", style="Title.TLabel").pack(side="left")
+        ttk.Label(header, text="Tabletop reach", padding=(16, 0)).pack(side="left")
+        badge = "SIMULATION DEMO" if self.session.worker.backend == "demo" else "PHYSICAL ROBOT"
+        ttk.Label(header, text=badge, style="Step.TLabel").pack(side="right")
+        body = ttk.Frame(self.root, padding=(12, 0, 12, 6))
+        body.pack(fill="both", expand=True)
+        side = ttk.Frame(body, width=306, padding=(8, 4, 16, 4))
+        side.pack(side="left", fill="y")
+        side.pack_propagate(False)
+        self.edit_controls = []
+        ttk.Label(side, text="1  Select a target", style="Step.TLabel").pack(anchor="w", pady=(0, 8))
+        ttk.Label(side, text="Origin: torso top center", style="Muted.TLabel").pack(anchor="w", pady=(0, 6))
+        arms = ttk.Frame(side)
+        arms.pack(fill="x")
+        for arm, label in (("right", "Right arm"), ("left", "Left arm")):
+            button = ttk.Radiobutton(arms, text=label, variable=self.arm, value=arm)
+            button.pack(side="left", padx=(0, 12))
+            self.edit_controls.append(button)
+        fields = ttk.Frame(side)
+        fields.pack(fill="x", pady=8)
+        for row, (label, variable) in enumerate(zip(("X (cm)", "Y (cm)", "Z (cm)"), self.coordinates)):
+            ttk.Label(fields, text=label).grid(row=row, column=0, sticky="w", pady=4)
+            entry = ttk.Entry(fields, textvariable=variable, width=11, font=("DejaVu Sans", 12))
+            entry.grid(row=row, column=1, sticky="e", padx=(10, 0), pady=4)
+            self.edit_controls.append(entry)
+        ttk.Label(side, text="X forward / Y left / Z up\nNegative Z is below the torso top.\nClick selects X/Y and keeps Z.", style="Muted.TLabel", wraplength=275).pack(anchor="w")
+        ttk.Button(side, text="Use current TCP", command=self.use_tcp).pack(fill="x", pady=(8, 12))
+        ttk.Separator(side).pack(fill="x", pady=12)
+        ttk.Label(side, text="2  Check the preview", style="Step.TLabel").pack(anchor="w")
+        self.preview_button = ttk.Button(side, text="Preview reach", command=self.plan)
+        self.preview_button.pack(fill="x", pady=8)
+        self.edit_controls.append(self.preview_button)
+        ttk.Label(side, text="Preview never moves the robot.", style="Muted.TLabel").pack(anchor="w")
+        ttk.Label(side, text="3  Move when ready", style="Step.TLabel").pack(anchor="w", pady=(14, 0))
+        self.execute_button = ttk.Button(side, text="Move robot", command=self.execute, style="Primary.TButton", state="disabled")
+        self.execute_button.pack(fill="x", pady=8)
+        ttk.Button(side, text="Stop", command=self.cancel, style="Stop.TButton").pack(fill="x")
+        notebook = ttk.Notebook(side)
+        notebook.pack(fill="both", expand=True, pady=(16, 0))
+        saved = ttk.Frame(notebook, padding=8)
+        adjustments = ttk.Frame(notebook, padding=8)
+        details = ttk.Frame(notebook, padding=8)
+        notebook.add(saved, text="Saved positions")
+        notebook.add(adjustments, text="Adjust")
+        notebook.add(details, text="Feedback")
+        ttk.Label(adjustments, text="Step (cm)").grid(row=0, column=0, sticky="w")
+        ttk.Combobox(adjustments, textvariable=self.increment, values=["0.1", "0.5", "1", "2", "5"], state="readonly", width=7).grid(row=0, column=1, columnspan=2, sticky="e")
+        for row, axis in enumerate("XYZ", start=1):
+            ttk.Label(adjustments, text=axis).grid(row=row, column=0, sticky="w", pady=2)
+            for column, direction in enumerate((-1, 1), start=1):
+                button = ttk.Button(adjustments, text="-" if direction < 0 else "+", width=7,
+                                    command=lambda i=row - 1, d=direction: self.adjust(i, d))
+                button.grid(row=row, column=column, padx=3, pady=2)
+                self.edit_controls.append(button)
+        self.names = ttk.Combobox(saved, textvariable=self.name, width=19)
+        self.names.pack(fill="x", pady=(0, 8))
+        self.save_button = ttk.Button(saved, text="Save this position", command=self.save, state="disabled")
+        self.save_button.pack(fill="x", pady=3)
+        self.load_button = ttk.Button(saved, text="Load position", command=self.load, state="disabled")
+        self.load_button.pack(fill="x", pady=3)
+        ttk.Label(details, textvariable=self.feedback_text, wraplength=240, justify="left").pack(anchor="w")
+        ttk.Label(details, textvariable=self.detail_text, wraplength=240, justify="left", style="Muted.TLabel").pack(anchor="w", pady=12)
+        scene = ttk.Frame(body)
+        scene.pack(side="left", fill="both", expand=True)
+        toolbar = ttk.Frame(scene, padding=(6, 0, 6, 8))
+        toolbar.pack(fill="x")
+        ttk.Label(toolbar, textvariable=self.view_label, style="Step.TLabel").pack(side="left")
+        for mode in ("Live", "Preview"):
+            ttk.Radiobutton(toolbar, text=mode, variable=self.display_mode, value=mode).pack(side="left", padx=12)
+        ttk.Button(toolbar, text="Overview", command=lambda: self.view(True)).pack(side="right", padx=4)
+        ttk.Button(toolbar, text="Head view", command=lambda: self.view(False)).pack(side="right", padx=4)
+        self.canvas = tk.Canvas(scene, width=self.width, height=self.height, highlightthickness=0, background="#233043")
+        self.canvas.pack(fill="both", expand=True)
+        self.image_item = self.canvas.create_image(0, 0, anchor="nw")
+        self.photo = None
+        self.canvas.bind("<Button-1>", self.click)
+        ttk.Label(scene, textvariable=self.message, style="Status.TLabel", wraplength=self.width - 20).pack(fill="x", pady=(8, 0))
+        footer = ttk.Frame(self.root, padding=(18, 4, 18, 10))
+        footer.pack(fill="x")
+        ttk.Label(footer, textvariable=self.connection, style="Muted.TLabel").pack(side="left")
+        if self.session.worker.backend == "can":
+            ttk.Label(footer, text="Arm joints only. Motors release after motion/stop; support both arms.", style="Muted.TLabel").pack(side="right")
+
+    def action(self, event, **details):
+        self.feedback_log.write(json.dumps({"event": event, "timestamp_unix": time.time(), **details}) + "\n")
+        self.feedback_log.flush()
 
     def invalidate(self, *_):
         self.session.plan = None
         self.preview_started = None
         self.execute_button.configure(state="disabled")
+        self.save_button.configure(state="disabled")
 
     def use_tcp(self):
+        if self.session.worker.state == "executing":
+            return
         self.session.sync()
-        for variable, value in zip(self.coordinates, self.session.twin.tcp_position(self.arm.get())):
-            variable.set(f"{value:.5f}")
+        position_cm = self.session.reference.from_world(self.session.twin.tcp_position(self.arm.get()))
+        for variable, value in zip(self.coordinates, position_cm):
+            variable.set(f"{value:.2f}")
 
     def adjust(self, axis, direction):
+        target = self.target_values()
+        if target is None:
+            return
         step = float(self.increment.get())
-        if not np.isfinite(step) or not 0 < step <= 0.1:
-            raise ValueError("Adjustment must be in (0, 0.1] meters")
-        self.coordinates[axis].set(f"{float(self.coordinates[axis].get()) + direction * step:.5f}")
-        self.message.set("Target adjusted. Create a new preview.")
+        if not np.isfinite(step) or not 0 < step <= 10:
+            raise ValueError("Adjustment must be in (0, 10] centimeters")
+        self.coordinates[axis].set(f"{target[axis] + direction * step:.2f}")
+        self.message.set("Target adjusted. Choose Preview reach.")
+
+    def target_values(self):
+        values = [variable.get().strip() for variable in self.coordinates]
+        if not all(self.root.tk.getboolean(self.root.tk.call("string", "is", "double", "-strict", value)) for value in values):
+            self.invalidate()
+            self.message.set("Enter a number in each X, Y and Z field.")
+            return None
+        target = np.array([float(value) for value in values])
+        if not np.isfinite(target).all():
+            self.invalidate()
+            self.message.set("X, Y and Z must be finite numbers.")
+            return None
+        return target
 
     def click(self, event):
+        if self.session.worker.state == "executing":
+            self.message.set("The robot is moving. Stop it before selecting another target.")
+            return
         if self.frame is None:
-            raise RuntimeError("Preview image is not available")
-        clearance = float(self.clearance.get())
-        if not np.isfinite(clearance) or not 0 <= clearance <= 0.3:
-            raise ValueError("Click clearance must be in [0, 0.3] meters")
-        target = self.cameras[1].unproject(event.x, event.y, self.frame) + [0, 0, clearance]
-        for variable, value in zip(self.coordinates, target):
-            variable.set(f"{value:.5f}")
-        self.message.set("Sim target selected. Create a preview before execution.")
+            self.message.set("Wait for the simulation view to finish resizing.")
+            return
+        if not 0 <= event.x < self.width or not 0 <= event.y < self.height:
+            self.message.set("Click inside the simulation view.")
+            return
+        camera = self.cameras[self.frame_index]
+        sim = (self.session.twin, self.session.preview)[self.frame_index]
+        if sim.tabletop_mount:
+            surface = camera.intersect_plane(event.x, event.y, self.frame, sim.table_height)
+            table = sim.model.geom("worktable").id
+            if surface is None or np.any(np.abs(surface[:2] - sim.model.geom_pos[table, :2]) > sim.model.geom_size[table, :2]):
+                self.invalidate()
+                self.message.set("Choose a point on the tabletop.")
+                return
+        else:
+            surface = camera.unproject(event.x, event.y, self.frame)
+        relative = self.session.reference.from_world(surface)
+        for variable, value in zip(self.coordinates[:2], relative[:2]):
+            variable.set(f"{value:.2f}")
+        target = self.target_values()
+        if target is None:
+            return
+        self.action("target_selected", arm=self.arm.get(), target_relative_cm=target.tolist(), reference_site=self.session.reference.site)
+        self.plan()
 
     def plan(self):
-        result = self.session.prepare(self.arm.get(), [float(variable.get()) for variable in self.coordinates])
+        target = self.target_values()
+        if target is None:
+            return
+        self.message.set("Planning a collision-free reach...")
+        self.root.update_idletasks()
+        result = self.session.prepare_relative(self.arm.get(), target)
         if result is None:
             self.preview_started = None
             self.execute_button.configure(state="disabled")
-            self.message.set(self.session.rejection_reason)
+            self.save_button.configure(state="disabled")
+            reason = self.session.rejection_reason
+            self.detail_text.set(reason)
+            if "chosen arm" in reason:
+                self.message.set("Choose the other arm, or select a point on this arm's side of the table.")
+            elif "IK" in reason or "workspace" in reason:
+                self.message.set("Cannot reach this position. Try a closer point or increase Z.")
+            else:
+                self.message.set(f"Preview unavailable: {reason}")
+            self.action("plan_rejected", arm=self.arm.get(), target_relative_cm=target.tolist(), reason=reason)
             return
         write_json(self.session_directory / f"plan_{time.time_ns()}.json", {
             "schema": "openarm.sync_plan.v1", "arm": result.trajectory.arm,
             "joint_names": joint_names(result.trajectory.arm), "target_m": result.target.tolist(),
+            "reference_site": self.session.reference.site, "target_relative_cm": target.tolist(),
             "times_s": result.trajectory.times.tolist(), "positions_rad": result.trajectory.positions.tolist(),
             "velocities_rad_s": result.trajectory.velocities.tolist(), "source": result.trajectory.source,
             "gripper_commanded": False,
         })
         self.preview_started = time.monotonic()
+        self.display_mode.set("Preview")
         self.execute_button.configure(state="normal")
-        self.message.set(f"Preview ready | {result.trajectory.source} | {result.trajectory.duration:.2f} s | Robot has not moved.")
+        self.save_button.configure(state="disabled")
+        self.detail_text.set(f"{result.trajectory.source.upper()} | {result.trajectory.duration:.1f} seconds")
+        self.message.set("Preview ready. Check the motion, then choose Move robot.")
 
     def execute(self):
         self.session.execute()
+        self.display_mode.set("Live")
         self.execute_button.configure(state="disabled")
-        self.message.set("Executing the previewed trajectory. Live view follows measured joint feedback.")
+        self.save_button.configure(state="disabled")
+        self.message.set("Moving to the target. Live view follows robot feedback.")
 
     def cancel(self):
+        moving = self.session.worker.state == "executing"
         self.session.worker.cancel()
         self.invalidate()
-        self.message.set("Cancellation requested.")
+        self.display_mode.set("Live")
+        self.message.set("Stopping motion..." if moving else "Ready. Click the tabletop to preview a reach.")
 
     def view(self, overview):
         for index, sim in enumerate((self.session.twin, self.session.preview)):
             look_height = 0.25 if sim.tabletop_mount else 0.48
             values = (np.array([1.55, 1.15, 1.25]), np.array([0.25, 0, look_height]), 48) if overview else self.camera_defaults[index]
             sim.set_camera(*values)
+
+    def schedule_resize(self, event):
+        if self.resize_pending is not None:
+            self.root.after_cancel(self.resize_pending)
+        width = min(1920, max(400, event.width))
+        height = min(1080, max(320, event.height))
+        self.resize_pending = self.root.after(150, lambda: self.resize_view(width, height))
+
+    def resize_view(self, width, height):
+        self.resize_pending = None
+        if self.closed or (width, height) == (self.width, self.height):
+            return
+        for camera in self.cameras:
+            camera.close()
+        for sim in (self.session.twin, self.session.preview):
+            sim.model.vis.global_.offwidth = max(1920, width)
+            sim.model.vis.global_.offheight = max(1080, height)
+        self.width, self.height = width, height
+        self.cameras = [OverheadCamera(sim.model, width, height, sim.table_height)
+                        for sim in (self.session.twin, self.session.preview)]
+        self.frame = None
+
+    def update_load_button(self, *_):
+        self.load_button.configure(state="normal" if self.name.get() in self.saved_names else "disabled")
 
     def refresh_names(self):
         names = []
@@ -177,21 +328,66 @@ class SyncConsole:
             if payload["schema"] != "openarm.sync_targets.v1":
                 raise ValueError("Unsupported target file")
             names = list(payload["targets"])
+        self.saved_names = set(names)
         self.names.configure(values=names)
+        self.update_load_button()
 
     def save(self):
-        if self.session.worker.state == "executing":
-            raise RuntimeError("Wait for execution to finish before saving observed joints")
+        if not self.name.get().strip():
+            self.message.set("Enter a name for this position.")
+            return
         self.session.save(self.targets, self.name.get())
         self.refresh_names()
-        self.message.set(f"Saved {self.name.get()} to {self.targets}")
+        self.message.set(f"Saved position: {self.name.get()}")
 
     def load(self):
+        if self.name.get() not in self.saved_names:
+            self.message.set("Save a position before loading it.")
+            return
+        if self.session.worker.state == "executing":
+            self.message.set("Stop the robot before loading a position.")
+            return
         arm, target = self.session.load(self.targets, self.name.get())
         self.arm.set(arm)
-        for variable, value in zip(self.coordinates, target):
-            variable.set(str(value))
-        self.message.set("Saved target loaded. Create a new preview from current feedback.")
+        for variable, value in zip(self.coordinates, self.session.reference.from_world(target)):
+            variable.set(f"{value:.2f}")
+        self.plan()
+
+    def visible_pixel(self, camera, point):
+        if (self.frame.rotation.T @ (point - self.frame.position))[2] >= -1e-5:
+            return None
+        pixel = camera.project(point, self.frame)
+        return pixel if 0 <= pixel[0] < self.width and 0 <= pixel[1] < self.height else None
+
+    def _overlay(self, camera, sim):
+        self.canvas.delete("overlay")
+        reference = self.session.reference
+        origin = self.visible_pixel(camera, reference.origin_m)
+        if origin is not None:
+            self.canvas.create_oval(origin[0] - 6, origin[1] - 6, origin[0] + 6, origin[1] + 6,
+                                    fill="#55dcec", outline="#102b3d", width=2, tags="overlay")
+            self.canvas.create_text(origin[0] + 10, origin[1] - 14, anchor="sw", text="Torso top (0, 0, 0)",
+                                    fill="#80f4ff", font=("DejaVu Sans", 11, "bold"), tags="overlay")
+            for index, (axis, color) in enumerate((("+X", "#ff8b91"), ("+Y", "#81f0af"), ("+Z", "#9ac6ff"))):
+                end = self.visible_pixel(camera, reference.origin_m + reference.rotation[:, index] * 0.12)
+                if end is not None:
+                    self.canvas.create_line(*origin, *end, fill=color, width=3, arrow="last", tags="overlay")
+                    self.canvas.create_text(end[0], end[1] - 10, text=axis, fill=color, font=("DejaVu Sans", 11, "bold"), tags="overlay")
+        if sim.tabletop_mount:
+            for arm, y in (("Right (-Y)", -0.28), ("Left (+Y)", 0.28)):
+                point = self.visible_pixel(camera, np.array([0.30, y, sim.table_height]))
+                if point is not None:
+                    self.canvas.create_text(*point, text=arm, fill="#ffffff", font=("DejaVu Sans", 12, "bold"), tags="overlay")
+        if self.session.plan is not None:
+            target = self.session.plan.target
+            coordinates = reference.from_world(target)
+            point = self.visible_pixel(camera, target)
+            if point is None:
+                return
+            u, v = point
+            self.canvas.create_oval(u - 8, v - 8, u + 8, v + 8, outline="#ffb340", width=3, tags="overlay")
+            self.canvas.create_text(u + 14, v - 12, anchor="sw", text=f"TCP ({coordinates[0]:.1f}, {coordinates[1]:.1f}, {coordinates[2]:.1f}) cm",
+                                    fill="#ffcb75", font=("DejaVu Sans", 12, "bold"), tags="overlay")
 
     def tick(self):
         if self.closed:
@@ -201,33 +397,38 @@ class SyncConsole:
         if self.preview_started is not None and self.session.plan is not None:
             self.session.show_preview(min(time.monotonic() - self.preview_started, self.session.plan.trajectory.duration))
         else:
-            from .session import apply_feedback
-
             apply_feedback(self.session.preview, feedback)
-        for index, (sim, camera) in enumerate(zip((self.session.twin, self.session.preview), self.cameras)):
-            frame = camera.capture(sim.data)
-            if index == 1:
-                self.frame = frame
-            rendered = Image.fromarray(frame.rgb)
-            if self.session.plan is not None:
-                u, v = camera.project(self.session.plan.target, frame)
-                drawing = ImageDraw.Draw(rendered)
-                drawing.ellipse((u - 6, v - 6, u + 6, v + 6), outline="#ffba40", width=2)
-                drawing.text((u + 8, v - 8), "Target", fill="#ffba40")
-            self.photos[index] = ImageTk.PhotoImage(rendered)
-            self.canvases[index].itemconfigure(self.image_items[index], image=self.photos[index])
+        self.frame_index = 0 if self.display_mode.get() == "Live" else 1
+        sim = (self.session.twin, self.session.preview)[self.frame_index]
+        camera = self.cameras[self.frame_index]
+        self.frame = camera.capture(sim.data)
+        self.photo = ImageTk.PhotoImage(Image.fromarray(self.frame.rgb))
+        self.canvas.itemconfigure(self.image_item, image=self.photo)
+        self._overlay(camera, sim)
+        self.view_label.set("LIVE ROBOT" if self.frame_index == 0 else "MOTION PREVIEW")
+        moving = self.session.worker.state == "executing"
+        for widget in self.edit_controls:
+            widget.state(["disabled"] if moving else ["!disabled"])
+        if moving:
+            self.load_button.configure(state="disabled")
+        else:
+            self.update_load_button()
         arm = self.arm.get()
         tcp = self.session.twin.tcp_position(arm)
-        self.feedback_text.set(f"Transport: {self.session.worker.state} | Feedback age: {(time.monotonic() - feedback.received_at) * 1000:.0f} ms | "
-                               f"TCP in sim [m]: {np.round(tcp, 4).tolist()} | Joints [rad]: {np.round(feedback.positions[arm], 3).tolist()}")
-        self.feedback_log.write(json.dumps({"timestamp_unix": time.time(), "state": self.session.worker.state,
-                                           "positions_rad": {name: value.tolist() for name, value in feedback.positions.items()}}) + "\n")
-        self.feedback_log.flush()
+        self.connection.set(f"{self.session.worker.backend.upper()} connected | {self.session.preview.planner_backend.upper()} | "
+                            f"{self.width} x {self.height} native | Feedback {(time.monotonic() - feedback.received_at) * 1000:.0f} ms")
+        self.feedback_text.set(f"TCP from torso top (cm)\n{np.round(self.session.reference.from_world(tcp), 2).tolist()}\n\nJoints (rad)\n{np.round(feedback.positions[arm], 3).tolist()}")
+        self.action("feedback", state=self.session.worker.state,
+                    positions_rad={name: value.tolist() for name, value in feedback.positions.items()})
         if self.session.worker.report is not None and self.session.worker.report is not self.last_report:
             self.last_report = self.session.worker.report
             write_json(self.session_directory / f"execution_{time.time_ns()}.json", self.last_report)
-            self.message.set(f"Execution completed | {json.dumps(self.session.worker.report)}")
-        self.root.after(80, self.tick)
+            self.save_button.configure(state="normal")
+            self.message.set("Reached target. Save this position or click another target.")
+        if self.session.worker.state == "cancelled" and self.last_state != "cancelled":
+            self.message.set("Motion stopped. Click a target to preview another reach.")
+        self.last_state = self.session.worker.state
+        self.root.after(60, self.tick)
 
     def callback_error(self, kind, error, traceback):
         self.error = error
@@ -261,8 +462,8 @@ def main():
     parser.add_argument("--drum-asset", type=Path)
     parser.add_argument("--targets", type=Path, default=RUNS / "sync/targets.json")
     parser.add_argument("--speed", type=float, default=0.2)
-    parser.add_argument("--record", type=Path, help="Run and record a physical MuJoCo demo without opening Tk")
-    parser.add_argument("--smoke-test", action="store_true", help="Exercise the real demo GUI and close automatically")
+    parser.add_argument("--record", type=Path, help="Record an independent MuJoCo demo without opening Tk")
+    parser.add_argument("--smoke-test", action="store_true", help="Exercise the actual GUI click and execution flow")
     args = parser.parse_args()
     if args.backend == "can":
         if args.record or args.smoke_test:
@@ -284,7 +485,7 @@ def main():
         session = SyncSession(worker, args.planner, args.drum_asset, args.speed)
         console = SyncConsole(session, args.targets)
         print(json.dumps({"sync_console": "ready", "backend": args.backend, "planner": args.planner,
-                          "session": str(console.session_directory)}), flush=True)
+                          "render_resolution": [console.width, console.height], "session": str(console.session_directory)}), flush=True)
         if args.smoke_test:
             started = time.monotonic()
 
@@ -298,14 +499,29 @@ def main():
                 else:
                     console.root.after(100, exercise)
 
-            console.arm.set("left")
-            console.plan()
-            if session.plan is not None or not console.root.winfo_exists():
-                raise RuntimeError("Opposite-side target must be rejected while keeping the interface available")
-            console.arm.set("right")
-            console.plan()
-            console.execute()
-            console.root.after(100, exercise)
+            def begin():
+                if time.monotonic() - started > 90:
+                    raise TimeoutError("GUI view did not become ready")
+                if console.frame is None:
+                    console.root.after(100, begin)
+                    return
+                if not console.saved_names:
+                    console.load()
+                    if not console.load_button.instate(["disabled"]):
+                        raise RuntimeError("Loading must remain disabled until a position is saved")
+                if session.preview.tabletop_mount:
+                    pixel = console.cameras[console.frame_index].project(np.array([0.43, -0.24, 0.0]), console.frame)
+                    console.canvas.event_generate("<Button-1>", x=pixel[0], y=pixel[1])
+                    if abs(float(console.coordinates[2].get()) + 30.0) > 1e-6 or session.plan is None:
+                        raise RuntimeError("Tabletop click must preserve torso-relative Z and produce a preview")
+                else:
+                    console.plan()
+                if console.frame.rgb.shape[:2] != (console.height, console.width):
+                    raise RuntimeError("The displayed frame must use the native viewport resolution")
+                console.execute()
+                console.root.after(100, exercise)
+
+            console.root.after(300, begin)
         console.run()
         if args.smoke_test:
             print(json.dumps({"gui_smoke_test": "passed", "execution": worker.report,

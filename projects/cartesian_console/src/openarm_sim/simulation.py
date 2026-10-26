@@ -7,7 +7,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 
-from .paths import MODEL, ROBOT_CONFIGS, ROOT, RUNS
+from .paths import BODY_REFERENCE, MODEL, ROBOT_CONFIGS, ROOT, RUNS
 ARMS = ("right", "left")
 
 
@@ -58,6 +58,9 @@ class ReachSimulation:
         self.table_height = 0.0 if tabletop_mount else type(self).table_height
         free_stick = free_stick or drumming
         spec = mujoco.MjSpec.from_file(str(MODEL))
+        spec.body(BODY_REFERENCE["body"]).add_site(name=BODY_REFERENCE["site"],
+            pos=BODY_REFERENCE["position_m"], quat=BODY_REFERENCE["quaternion_wxyz"],
+            size=[0.006, 0, 0], rgba=[0.3, 0.9, 1, 1], group=4)
         if worktable:
             spec.worldbody.add_geom(
                 name="worktable", type=mujoco.mjtGeom.mjGEOM_BOX,

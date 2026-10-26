@@ -72,25 +72,36 @@ class OverheadCamera:
         )
 
     def unproject(self, u: int, v: int, frame: CameraFrame) -> NDArray[np.float64]:
-        if not 0 <= u < self.width or not 0 <= v < self.height:
-            raise ValueError("Pixel coordinates are outside the image")
-        # MuJoCo 相机沿局部坐标的 -Z 方向观察，图像行坐标向下增加。
-        local = np.array([(u - self.cx) / frame.focal, -(v - self.cy) / frame.focal, -1.0])
-        ray = frame.rotation @ local
-        # 1) 物理模型可用时按真实几何求交（会越过机械臂，找到它后面的表面）。
+        ray = self._pixel_ray(u, v, frame)
         surface = self._surface_along(frame, ray)
         if surface is not None:
             return surface
-        # 2) 没有物理模型（例如真机深度相机）时退回 depth buffer。
         point = self._depth_along(frame, ray, u, v)
         if point is not None:
             return point
-        # 3) 最后退回桌面平面（旧的平面假设）。
+        return self.unproject_plane(u, v, frame, self.plane_height)
+
+    def _pixel_ray(self, u: int, v: int, frame: CameraFrame) -> NDArray[np.float64]:
+        if not 0 <= u < self.width or not 0 <= v < self.height:
+            raise ValueError("Pixel coordinates are outside the image")
+        local = np.array([(u - self.cx) / frame.focal, -(v - self.cy) / frame.focal, -1.0])
+        return frame.rotation @ local
+
+    def unproject_plane(self, u: int, v: int, frame: CameraFrame, height: float) -> NDArray[np.float64]:
+        point = self.intersect_plane(u, v, frame, height)
+        if point is None:
+            raise ValueError("Camera ray does not intersect the target plane in front of the camera")
+        return point
+
+    def intersect_plane(self, u: int, v: int, frame: CameraFrame, height: float) -> NDArray[np.float64] | None:
+        if not np.isfinite(height):
+            raise ValueError("Plane height must be finite")
+        ray = self._pixel_ray(u, v, frame)
         if abs(ray[2]) < 1e-9:
-            raise ValueError("Camera ray is parallel to the target plane")
-        distance = (self.plane_height - frame.position[2]) / ray[2]
+            return None
+        distance = (height - frame.position[2]) / ray[2]
         if distance <= 0:
-            raise ValueError("Target plane is behind the camera")
+            return None
         return frame.position + distance * ray
 
     def _surface_along(self, frame: CameraFrame, ray: NDArray[np.float64]) -> NDArray[np.float64] | None:

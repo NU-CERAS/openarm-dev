@@ -13,6 +13,7 @@ from openarm_tools.recording.storage import lock, write_json
 from openarm_tools.robot.config import load, validate_positions
 
 from ..execution import JointTrajectory, joint_names
+from ..paths import BODY_REFERENCE
 from ..simulation import ARMS, ReachSimulation
 
 
@@ -28,6 +29,25 @@ class Preview:
     trajectory: JointTrajectory
     target: np.ndarray
     start: Feedback
+
+
+@dataclass(frozen=True)
+class BodyReference:
+    site: str
+    origin_m: np.ndarray
+    rotation: np.ndarray
+
+    def to_world(self, coordinates_cm):
+        values = np.asarray(coordinates_cm, dtype=float)
+        if values.shape != (3,) or not np.isfinite(values).all():
+            raise ValueError("Body-relative coordinates require three finite values in centimeters")
+        return self.origin_m + self.rotation @ (values / 100.0)
+
+    def from_world(self, position_m):
+        values = np.asarray(position_m, dtype=float)
+        if values.shape != (3,) or not np.isfinite(values).all():
+            raise ValueError("World coordinates require three finite values in meters")
+        return self.rotation.T @ (values - self.origin_m) * 100.0
 
 
 class MotionCancelled(Exception):
@@ -301,6 +321,11 @@ class SyncSession:
         self.worker = worker
         self.twin = ReachSimulation(drum_asset=scene, worktable=scene is None, tabletop_mount=scene is None)
         self.preview = ReachSimulation(planner=planner, drum_asset=scene, worktable=scene is None, tabletop_mount=scene is None)
+        site = self.twin.model.site(BODY_REFERENCE["site"]).id
+        if self.twin.model.site_bodyid[site] != self.twin.model.body(BODY_REFERENCE["body"]).id:
+            raise ValueError("The body reference must be attached to the fixed chassis")
+        self.reference = BodyReference(BODY_REFERENCE["site"], self.twin.data.site_xpos[site].copy(),
+                                       self.twin.data.site_xmat[site].reshape(3, 3).copy())
         self.plan = None
         self.rejection_reason = ""
         self.speed = speed
@@ -347,6 +372,9 @@ class SyncSession:
         self.show_preview(0)
         return self.plan
 
+    def prepare_relative(self, arm: str, coordinates_cm) -> Preview | None:
+        return self.prepare(arm, self.reference.to_world(coordinates_cm))
+
     def show_preview(self, elapsed):
         if self.plan is None:
             return
@@ -371,6 +399,10 @@ class SyncSession:
             raise ValueError("Unsupported target file schema")
         payload["targets"][name.strip()] = {
             "arm": self.plan.trajectory.arm, "sim_target_m": self.plan.target.tolist(),
+            "reference_site": self.reference.site,
+            "reference_origin_m": self.reference.origin_m.tolist(),
+            "reference_rotation": self.reference.rotation.tolist(),
+            "target_relative_cm": self.reference.from_world(self.plan.target).tolist(),
             "planned_joint_positions_rad": self.plan.trajectory.positions[-1].tolist(),
             "observed_joint_positions_rad": feedback.positions[self.plan.trajectory.arm].tolist(),
             "observed_sim_tcp_m": self.twin.tcp_position(self.plan.trajectory.arm).tolist(),
