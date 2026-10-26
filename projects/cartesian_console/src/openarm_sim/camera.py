@@ -72,7 +72,7 @@ class OverheadCamera:
         )
 
     def unproject(self, u: int, v: int, frame: CameraFrame) -> NDArray[np.float64]:
-        ray = self._pixel_ray(u, v, frame)
+        ray = self.pixel_ray(u, v, frame)
         surface = self._surface_along(frame, ray)
         if surface is not None:
             return surface
@@ -81,7 +81,7 @@ class OverheadCamera:
             return point
         return self.unproject_plane(u, v, frame, self.plane_height)
 
-    def _pixel_ray(self, u: int, v: int, frame: CameraFrame) -> NDArray[np.float64]:
+    def pixel_ray(self, u: int, v: int, frame: CameraFrame) -> NDArray[np.float64]:
         if not 0 <= u < self.width or not 0 <= v < self.height:
             raise ValueError("Pixel coordinates are outside the image")
         local = np.array([(u - self.cx) / frame.focal, -(v - self.cy) / frame.focal, -1.0])
@@ -96,7 +96,7 @@ class OverheadCamera:
     def intersect_plane(self, u: int, v: int, frame: CameraFrame, height: float) -> NDArray[np.float64] | None:
         if not np.isfinite(height):
             raise ValueError("Plane height must be finite")
-        ray = self._pixel_ray(u, v, frame)
+        ray = self.pixel_ray(u, v, frame)
         if abs(ray[2]) < 1e-9:
             return None
         distance = (height - frame.position[2]) / ray[2]
@@ -136,14 +136,13 @@ class OverheadCamera:
             return None
         return frame.position + ray * depth
 
-    def project(self, point: NDArray[np.float64], frame: CameraFrame) -> tuple[int, int]:
+    def project(self, point: NDArray[np.float64], frame: CameraFrame, subpixel=False) -> tuple[int, int] | tuple[float, float]:
         local = frame.rotation.T @ (point - frame.position)
         if local[2] >= 0:
             raise ValueError("Point is behind the camera")
-        return (
-            round(self.cx + frame.focal * local[0] / -local[2]),
-            round(self.cy - frame.focal * local[1] / -local[2]),
-        )
+        u = float(self.cx + frame.focal * local[0] / -local[2])
+        v = float(self.cy - frame.focal * local[1] / -local[2])
+        return (u, v) if subpixel else (round(u), round(v))
 
     def close(self) -> None:
         self.renderer.close()

@@ -49,28 +49,38 @@ hardware adapter. It does not establish physical robot performance.
 
 ## Operator workflow
 
-1. Select **Right arm** or **Left arm**. Enter X/Y/Z in centimeters relative to
-   the torso top origin. Click the tabletop to select X/Y and automatically create
-   a motion preview. Z remains the entered torso-relative coordinate.
-   For typed coordinates, select **Preview reach** after editing.
-2. Check **Preview** mode. The orange marker identifies the TCP target. Use
+1. Select **Right arm** or **Left arm**. Drag a TCP arrow: red **X**, green **Y**
+   or blue **Z**. Only that coordinate changes, measured in centimeters from
+   the torso top origin. Release the mouse to create a collision-checked preview.
+   **Esc** cancels a drag and restores the previous coordinates and preview.
+   The robot holds its position throughout target editing and previewing.
+2. In **Live** mode the arrows start at the measured TCP. In **Preview** mode
+   they manipulate the planned final TCP target. Arrow tips and shafts are
+   draggable. Choose **Overview** if an axis points toward the viewing direction.
+   Changing the view or resizing cancels an active drag.
+3. Check **Preview** mode. The orange marker identifies the TCP target. Use
    **Live** to inspect measured robot posture. An unreachable or opposite-side
    point displays guidance and leaves **Move robot** disabled.
-3. Select **Move robot**. The viewport switches to **Live** and the robot executes
+4. Select **Move robot**. The viewport switches to **Live** and the robot executes
    the checked trajectory. **Stop** cancels motion. Connecting, selecting a target,
    loading a position and previewing start no physical movement.
-4. Observe the physical arm directly. Adjust the sim target and repeat until the
+5. Observe the physical arm directly. Adjust the sim target and repeat until the
    physical position is satisfactory. The **Adjust** tab provides small XYZ
    increments in centimeters; **Use current TCP** displays the current TCP
    relative to the same torso top origin.
-5. After reaching the target, enter a name under **Saved positions** and choose
+6. After reaching the target, enter a name under **Saved positions** and choose
    **Save this position**. The file stores the sim target, planned final joints,
    measured joints, model-derived TCP, execution state and backend. The file
    also records the reference site, its transform and target coordinates in cm.
-6. **Load position** restores a saved target and creates a fresh preview from
+7. **Load position** restores a saved target and creates a fresh preview from
    current feedback. It becomes available after a matching position is saved.
    Execution checks both arms against the preview start; changes above 0.03 rad
    reject the trajectory.
+
+Numeric X/Y/Z fields remain available for exact coordinate entry; choose
+**Preview reach** after editing. Table clicks select X/Y while retaining Z.
+Drag handles are disabled during robot execution. Session logs record the chosen
+axis, drag origin, final coordinates and cancellations.
 
 The viewport renders at its native pixel dimensions, initially up to 1280 x 760.
 Resizing rebuilds the renderers for the available area, up to 1920 x 1080, without

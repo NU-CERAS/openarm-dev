@@ -24,8 +24,8 @@ OPENARM_PYTHON="$(command -v python)" bash projects/cartesian_console/scripts/ru
 ```
 
 The English interface provides a large native-resolution viewport with Live and
-Preview modes. Enter XYZ in centimeters from the fixed torso top center, or
-click the sim tabletop, preview, execute, observe the arm,
+Preview modes. Drag a TCP axis or enter XYZ in centimeters from the fixed torso
+top center, preview, execute, observe the arm,
 adjust the coordinate and save a named target. The demo uses an independent
 MuJoCo robot as the controlled plant. Opening the interface starts no motion.
 

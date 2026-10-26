@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk
 
 import numpy as np
+import mujoco
 from PIL import Image, ImageTk
 
 from openarm_tools.recording.storage import write_json
@@ -15,6 +16,7 @@ from ..compute_guard import budgeted, check_resources
 from ..execution import joint_names
 from ..paths import RUNS
 from .session import RobotWorker, SyncSession, apply_feedback, hardware_configuration
+from .gizmo import AxisDrag, hit_axis
 
 
 class SyncConsole:
@@ -37,6 +39,11 @@ class SyncConsole:
         self.frame = None
         self.frame_index = 0
         self.resize_pending = None
+        self.drag = None
+        self.drag_target = None
+        self.drag_changed = False
+        self.gizmo_handles = {}
+        self.gizmo_origin = None
         self.saved_names = set()
         self.session_directory = RUNS / "sync/sessions" / str(time.time_ns())
         self.session_directory.mkdir(parents=True)
@@ -47,7 +54,7 @@ class SyncConsole:
         self.increment = tk.StringVar(value="1")
         self.name = tk.StringVar(value="target_1")
         self.display_mode = tk.StringVar(value="Live")
-        self.message = tk.StringVar(value="Click the tabletop to preview a reach. Then choose Move robot.")
+        self.message = tk.StringVar(value="Drag a TCP axis, then release to preview. Choose Move robot when ready.")
         self.view_label = tk.StringVar(value="LIVE ROBOT")
         self.connection = tk.StringVar()
         self.feedback_text = tk.StringVar()
@@ -65,6 +72,7 @@ class SyncConsole:
         self.name.trace_add("write", self.update_load_button)
         self.refresh_names()
         self.canvas.bind("<Configure>", self.schedule_resize)
+        self.root.bind("<Escape>", lambda event: self.cancel_drag())
         self.tick()
 
     def _style(self):
@@ -112,7 +120,7 @@ class SyncConsole:
             entry = ttk.Entry(fields, textvariable=variable, width=11, font=("DejaVu Sans", 12))
             entry.grid(row=row, column=1, sticky="e", padx=(10, 0), pady=4)
             self.edit_controls.append(entry)
-        ttk.Label(side, text="X forward / Y left / Z up\nNegative Z is below the torso top.\nClick selects X/Y and keeps Z.", style="Muted.TLabel", wraplength=275).pack(anchor="w")
+        ttk.Label(side, text="Drag a TCP arrow along X, Y or Z.\nCoordinates are from the torso top.\nTable clicks select X/Y and keep Z.", style="Muted.TLabel", wraplength=275).pack(anchor="w")
         ttk.Button(side, text="Use current TCP", command=self.use_tcp).pack(fill="x", pady=(8, 12))
         ttk.Separator(side).pack(fill="x", pady=12)
         ttk.Label(side, text="2  Check the preview", style="Step.TLabel").pack(anchor="w")
@@ -162,7 +170,10 @@ class SyncConsole:
         self.canvas.pack(fill="both", expand=True)
         self.image_item = self.canvas.create_image(0, 0, anchor="nw")
         self.photo = None
-        self.canvas.bind("<Button-1>", self.click)
+        self.canvas.bind("<ButtonPress-1>", self.pointer_down)
+        self.canvas.bind("<B1-Motion>", self.pointer_move)
+        self.canvas.bind("<ButtonRelease-1>", self.pointer_up)
+        self.canvas.bind("<Motion>", self.pointer_hover)
         ttk.Label(scene, textvariable=self.message, style="Status.TLabel", wraplength=self.width - 20).pack(fill="x", pady=(8, 0))
         footer = ttk.Frame(self.root, padding=(18, 4, 18, 10))
         footer.pack(fill="x")
@@ -181,7 +192,7 @@ class SyncConsole:
         self.save_button.configure(state="disabled")
 
     def use_tcp(self):
-        if self.session.worker.state == "executing":
+        if self.session.worker.state == "executing" or self.drag is not None:
             return
         self.session.sync()
         position_cm = self.session.reference.from_world(self.session.twin.tcp_position(self.arm.get()))
@@ -242,6 +253,9 @@ class SyncConsole:
         self.plan()
 
     def plan(self):
+        if self.drag is not None:
+            self.message.set("Release the mouse to preview this target.")
+            return
         target = self.target_values()
         if target is None:
             return
@@ -278,6 +292,9 @@ class SyncConsole:
         self.message.set("Preview ready. Check the motion, then choose Move robot.")
 
     def execute(self):
+        if self.drag is not None:
+            self.message.set("Release the mouse and check the preview before moving.")
+            return
         self.session.execute()
         self.display_mode.set("Live")
         self.execute_button.configure(state="disabled")
@@ -285,6 +302,7 @@ class SyncConsole:
         self.message.set("Moving to the target. Live view follows robot feedback.")
 
     def cancel(self):
+        self.cancel_drag()
         moving = self.session.worker.state == "executing"
         self.session.worker.cancel()
         self.invalidate()
@@ -292,6 +310,7 @@ class SyncConsole:
         self.message.set("Stopping motion..." if moving else "Ready. Click the tabletop to preview a reach.")
 
     def view(self, overview):
+        self.cancel_drag()
         for index, sim in enumerate((self.session.twin, self.session.preview)):
             look_height = 0.25 if sim.tabletop_mount else 0.48
             values = (np.array([1.55, 1.15, 1.25]), np.array([0.25, 0, look_height]), 48) if overview else self.camera_defaults[index]
@@ -308,6 +327,7 @@ class SyncConsole:
         self.resize_pending = None
         if self.closed or (width, height) == (self.width, self.height):
             return
+        self.cancel_drag()
         for camera in self.cameras:
             camera.close()
         for sim in (self.session.twin, self.session.preview):
@@ -317,6 +337,93 @@ class SyncConsole:
         self.cameras = [OverheadCamera(sim.model, width, height, sim.table_height)
                         for sim in (self.session.twin, self.session.preview)]
         self.frame = None
+
+    def pointer_hover(self, event):
+        if self.drag is None:
+            selected = hit_axis((event.x, event.y), self.gizmo_handles)
+            self.canvas.configure(cursor="hand2" if selected is not None else "crosshair")
+
+    def pointer_down(self, event):
+        if self.session.worker.state == "executing" or self.frame is None:
+            self.click(event)
+            return
+        axis = hit_axis((event.x, event.y), self.gizmo_handles)
+        if axis is None:
+            if self.gizmo_origin is not None and np.linalg.norm(np.array([event.x, event.y]) - self.gizmo_origin) < 13:
+                self.message.set("Drag one of the colored X, Y or Z arrows.")
+                return
+            self.click(event)
+            return
+        camera = self.cameras[self.frame_index]
+        drag = AxisDrag.begin(camera, self.frame, self.gizmo_world, self.session.reference.rotation[:, axis], axis,
+                              (event.x, event.y))
+        if drag is None:
+            self.message.set("Choose Overview to drag this axis from a clearer angle.")
+            return
+        self.drag_values = [value.get() for value in self.coordinates]
+        self.drag_plan = self.session.plan
+        self.drag_preview_started = self.preview_started
+        self.drag_pose = self.session.preview.data.qpos.copy()
+        self.drag_start_pixel = np.array([event.x, event.y])
+        self.drag = drag
+        self.drag_target = drag.origin.copy()
+        self.drag_changed = False
+        self.preview_started = None
+        self.display_mode.set("Live" if self.frame_index == 0 else "Preview")
+        self.execute_button.configure(state="disabled")
+        self.canvas.configure(cursor="fleur")
+        self.message.set(f"Dragging {'XYZ'[axis]}. Release to preview; Esc cancels.")
+        self.action("drag_started", axis="XYZ"[axis], origin_cm=self.session.reference.from_world(drag.origin).tolist())
+
+    def pointer_move(self, event):
+        if self.drag is None:
+            return
+        if not 0 <= event.x < self.width or not 0 <= event.y < self.height:
+            return
+        if not self.drag_changed and np.linalg.norm(np.array([event.x, event.y]) - self.drag_start_pixel) < 3:
+            return
+        target = self.drag.target((event.x, event.y))
+        if target is None:
+            self.message.set("Keep the drag inside the simulation view.")
+            return
+        self.drag_target = target
+        self.drag_changed = True
+        for variable, value in zip(self.coordinates, self.session.reference.from_world(target)):
+            variable.set(f"{value:.2f}")
+
+    def pointer_up(self, event):
+        if self.drag is None:
+            return
+        self.pointer_move(event)
+        changed = self.drag_changed
+        axis = self.drag.index
+        self.drag = None
+        self.drag_target = None
+        self.canvas.configure(cursor="crosshair")
+        if changed:
+            self.action("drag_finished", axis="XYZ"[axis], target_relative_cm=[float(v.get()) for v in self.coordinates])
+            self.plan()
+        else:
+            self.preview_started = self.drag_preview_started
+            self.execute_button.configure(state="normal" if self.session.plan is not None else "disabled")
+            self.message.set("Drag an axis arrow to change the TCP target.")
+
+    def cancel_drag(self):
+        if self.drag is None:
+            return
+        axis = self.drag.index
+        self.drag = None
+        self.drag_target = None
+        for variable, value in zip(self.coordinates, self.drag_values):
+            variable.set(value)
+        self.session.plan = self.drag_plan
+        self.preview_started = self.drag_preview_started
+        self.execute_button.configure(state="normal" if self.session.plan is not None else "disabled")
+        completed = self.session.plan is not None and self.session.worker.completed_plan is self.session.plan
+        self.save_button.configure(state="normal" if completed else "disabled")
+        self.canvas.configure(cursor="crosshair")
+        self.message.set("Drag cancelled. The robot position is unchanged.")
+        self.action("drag_cancelled", axis="XYZ"[axis])
 
     def update_load_button(self, *_):
         self.load_button.configure(state="normal" if self.name.get() in self.saved_names else "disabled")
@@ -356,8 +463,42 @@ class SyncConsole:
     def visible_pixel(self, camera, point):
         if (self.frame.rotation.T @ (point - self.frame.position))[2] >= -1e-5:
             return None
-        pixel = camera.project(point, self.frame)
+        pixel = camera.project(point, self.frame, subpixel=True)
         return pixel if 0 <= pixel[0] < self.width and 0 <= pixel[1] < self.height else None
+
+    def draw_gizmo(self, camera, sim):
+        self.canvas.delete("gizmo")
+        self.gizmo_handles = {}
+        self.gizmo_origin = None
+        if self.session.worker.state == "executing":
+            return
+        if self.drag is not None:
+            anchor = self.drag_target
+        elif self.frame_index == 1 and self.session.plan is not None:
+            anchor = self.session.plan.target
+        else:
+            anchor = sim.tcp_position(self.arm.get())
+        origin = self.visible_pixel(camera, anchor)
+        if origin is None:
+            return
+        self.gizmo_world = anchor.copy()
+        self.gizmo_origin = np.array(origin, dtype=float)
+        self.canvas.create_oval(origin[0] - 7, origin[1] - 7, origin[0] + 7, origin[1] + 7,
+                                fill="#ffffff", outline="#162337", width=2, tags="gizmo")
+        for index, (axis, color) in enumerate((("X", "#ff6b76"), ("Y", "#61e49b"), ("Z", "#75b5ff"))):
+            end = self.visible_pixel(camera, anchor + self.session.reference.rotation[:, index] * 0.10)
+            if end is None or np.linalg.norm(np.array(end) - origin) < 18:
+                continue
+            self.gizmo_handles[index] = (self.gizmo_origin.copy(), np.array(end, dtype=float))
+            width = 6 if self.drag is not None and self.drag.index == index else 4
+            self.canvas.create_line(*origin, *end, fill=color, width=width, arrow="last", arrowshape=(12, 15, 6), tags="gizmo")
+            self.canvas.create_oval(end[0] - 5, end[1] - 5, end[0] + 5, end[1] + 5,
+                                    fill=color, outline="#142134", width=1, tags="gizmo")
+            self.canvas.create_text(end[0], end[1] - 15, text=axis, fill=color,
+                                    font=("DejaVu Sans", 13, "bold"), tags="gizmo")
+        if self.session.plan is None:
+            self.canvas.create_text(origin[0] + 14, origin[1] + 18, anchor="nw", text="Drag TCP axes",
+                                    fill="white", font=("DejaVu Sans", 11, "bold"), tags="gizmo")
 
     def _overlay(self, camera, sim):
         self.canvas.delete("overlay")
@@ -394,7 +535,10 @@ class SyncConsole:
             return
         check_resources()
         feedback = self.session.sync()
-        if self.preview_started is not None and self.session.plan is not None:
+        if self.drag is not None:
+            self.session.preview.data.qpos[:] = self.drag_pose
+            mujoco.mj_forward(self.session.preview.model, self.session.preview.data)
+        elif self.preview_started is not None and self.session.plan is not None:
             self.session.show_preview(min(time.monotonic() - self.preview_started, self.session.plan.trajectory.duration))
         else:
             apply_feedback(self.session.preview, feedback)
@@ -405,11 +549,12 @@ class SyncConsole:
         self.photo = ImageTk.PhotoImage(Image.fromarray(self.frame.rgb))
         self.canvas.itemconfigure(self.image_item, image=self.photo)
         self._overlay(camera, sim)
+        self.draw_gizmo(camera, sim)
         self.view_label.set("LIVE ROBOT" if self.frame_index == 0 else "MOTION PREVIEW")
         moving = self.session.worker.state == "executing"
         for widget in self.edit_controls:
-            widget.state(["disabled"] if moving else ["!disabled"])
-        if moving:
+            widget.state(["disabled"] if moving or self.drag is not None else ["!disabled"])
+        if moving or self.drag is not None:
             self.load_button.configure(state="disabled")
         else:
             self.update_load_button()
@@ -438,6 +583,7 @@ class SyncConsole:
         if self.closed:
             return
         self.closed = True
+        self.cancel_drag()
         try:
             self.session.close()
         finally:
