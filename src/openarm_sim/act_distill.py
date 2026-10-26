@@ -44,10 +44,40 @@ def render_reference_images(source: Path, output: Path, limit: int, width=192, h
                     images[step] = renderer.render()
                 target.flush()
                 print(f"Rendered reference episode {index + 1}/{limit}", flush=True)
+        target.attrs["successful"] = len(episodes)
+        target.attrs["source_sha256"] = hashlib.sha256(source.read_bytes()).hexdigest()
     bank_source = source.with_name(source.stem + "_resets.npz")
     bank_target = output.with_name(output.stem + "_resets.npz")
     if bank_source.resolve() != bank_target.resolve():
         shutil.copyfile(bank_source, bank_target)
+
+
+def merge_datasets(sources: list[Path], output: Path):
+    if not sources or any(source.resolve() == output.resolve() for source in sources):
+        raise ValueError("Dataset aggregation requires distinct input and output paths")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    bank_hash = None
+    with h5py.File(output, "w") as target:
+        episodes = target.create_group("episodes")
+        for source in sources:
+            with h5py.File(source) as original:
+                if original.attrs["schema"] != SCHEMA:
+                    raise ValueError("Unsupported teacher-query dataset")
+                current_hash = original.attrs["bank_sha256"]
+                if bank_hash is not None and current_hash != bank_hash:
+                    raise ValueError("Do not merge datasets from different reset splits")
+                if bank_hash is None:
+                    bank_hash = current_hash
+                    for name, value in original.attrs.items():
+                        target.attrs[name] = value
+                for item in original["episodes"].values():
+                    name = f"{len(episodes):06d}"
+                    original.copy(item, episodes, name=name)
+                    episodes[name].attrs["source_sha256"] = hashlib.sha256(source.read_bytes()).hexdigest()
+                    episodes[name].attrs["supervision"] = original.attrs.get("supervision", "executed")
+        target.attrs["supervision"] = "teacher_query"
+        target.attrs["successful"] = sum(int(item.attrs["success"]) for item in episodes.values())
+        target.attrs["source"] = "aggregated_teacher_supervision"
 
 
 def collect_teacher(teacher: Path, residual: Path | None, bank: Path, output: Path, episodes: int, seed=200000, student: Path | None = None):
@@ -187,12 +217,15 @@ def main():
     parser.add_argument("--student", type=Path)
     parser.add_argument("--bank", type=Path)
     parser.add_argument("--source", type=Path)
+    parser.add_argument("--merge", nargs="+", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--episodes", type=int, default=64)
     parser.add_argument("--seed", type=int, default=200000)
     args = parser.parse_args()
     torch.set_num_threads(1)
-    if args.source is not None:
+    if args.merge is not None:
+        merge_datasets(args.merge, args.output)
+    elif args.source is not None:
         render_reference_images(args.source, args.output, args.episodes)
     else:
         if args.teacher is None or args.bank is None:

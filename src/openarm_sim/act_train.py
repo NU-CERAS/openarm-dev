@@ -46,7 +46,7 @@ def main():
     parser.add_argument("--steps", type=int, default=10000)
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--chunk", type=int, default=20)
-    parser.add_argument("--query-interval", type=int, default=5)
+    parser.add_argument("--query-interval", type=int, default=1)
     parser.add_argument("--hidden", type=int, default=128)
     parser.add_argument("--layers", type=int, default=2)
     parser.add_argument("--learning-rate", type=float, default=0.0001)
@@ -55,7 +55,7 @@ def main():
     parser.add_argument("--eval-worlds", type=int, default=32)
     parser.add_argument("--student", action="store_true")
     parser.add_argument("--relative-commands", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--physical-oracle", action="store_true")
+    parser.add_argument("--physical-oracle", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--observation-clip", type=float, default=10.0)
     parser.add_argument("--wandb", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--seed", type=int, default=0)
@@ -85,7 +85,7 @@ def main():
     (args.output / "run_config.json").write_text(json.dumps(settings, default=str, indent=2) + "\n")
     model = ActionChunkTransformer(ACTConfig(state_dim=train.state.shape[1], chunk=args.chunk,
                                            hidden=args.hidden, layers=args.layers, vision=args.student,
-                                           relative_commands=args.relative_commands, physical_oracle=args.physical_oracle,
+                                           relative_commands=args.relative_commands, physical_oracle=args.physical_oracle and not args.student,
                                            observation_clip=args.observation_clip),
                                    *normalization(train, args.relative_commands)).cuda()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=0.0001)
