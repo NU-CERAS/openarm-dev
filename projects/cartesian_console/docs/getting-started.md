@@ -61,10 +61,11 @@ live twin, motion planner and interface together. Closing the window releases
 the process and its compute slot.
 
 1. Select an arm.
-2. Drag its TCP's red X, green Y or blue Z arrow. Release to preview.
-3. Inspect the preview, then choose **Execute motion**.
+2. Drag its TCP's red X, green Y or blue Z arrow. Release to plan and move.
+3. Wait for the measured robot to reach the target, then drag again.
 4. **Esc** cancels target dragging; **Stop** cancels robot motion.
-5. Save a reached position under **Saved positions**, then load it to replan.
+5. Save a reached position under **Saved positions**; **Move to saved position**
+   plans and executes that target from current feedback.
 
 Coordinates are centimeters from the torso's top-center point. X is forward,
 Y is left and Z is up. For the right arm, (40, -25, -30) cm is a reachable
@@ -94,8 +95,8 @@ CUDA_VISIBLE_DEVICES="" __GLX_VENDOR_LIBRARY_NAME=mesa LIBGL_ALWAYS_SOFTWARE=1 \
   projects/cartesian_console/tests/test_ompl.py
 ~~~
 
-An automatic check opens the actual interface, selects a tabletop point, plans,
-executes in MuJoCo, saves/loads a position and closes:
+An automatic check opens the actual interface, drags a TCP axis, plans and
+executes in MuJoCo, saves/moves to a named position and closes:
 
 ~~~bash
 bash projects/cartesian_console/scripts/run_sync.sh --smoke-test \

@@ -43,7 +43,7 @@ def pump(console, predicate, timeout=15):
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="Requires a desktop display for actual Tk events")
 @pytest.mark.parametrize("release_axis", [0, 1, 2])
-def test_gui_axis_drag_preview_cancel_and_physical_execution(release_axis):
+def test_gui_drag_release_moves_and_next_drag_uses_measured_pose(release_axis):
     from openarm_sim.console.app import SyncConsole
 
     worker = RobotWorker(realtime=False)
@@ -57,18 +57,22 @@ def test_gui_axis_drag_preview_cancel_and_physical_execution(release_axis):
         console.root.focus_force()
         pump(console, lambda: console.frame is not None and console.resize_pending is None and len(console.gizmo_handles) == 3)
         original = session.sync().positions["right"].copy()
-        for axis in (0, 1, 2):
+        assert hit_axis((3, 3), console.gizmo_handles) is None
+        console.canvas.event_generate("<ButtonPress-1>", x=3, y=3)
+        console.canvas.event_generate("<ButtonRelease-1>", x=3, y=3)
+        assert session.plan is None and worker.state == "connected"
+        def drag_axis(axis, centimeters, cancel=False):
             pump(console, lambda: console.frame is not None and axis in console.gizmo_handles)
             point = console.gizmo_handles[axis][1].astype(int)
             original_values = [value.get() for value in console.coordinates]
             console.canvas.event_generate("<ButtonPress-1>", x=int(point[0]), y=int(point[1]))
             assert console.drag is not None and console.drag.index == axis
-            end = console.drag.camera.project(console.drag.origin + console.drag.axis * 0.12, console.drag.frame)
+            end = console.drag.camera.project(console.drag.origin + console.drag.axis * (0.10 + centimeters / 100), console.drag.frame)
             console.canvas.event_generate("<B1-Motion>", x=end[0], y=end[1])
             assert console.drag_changed
             assert session.plan is None
-            np.testing.assert_allclose(session.sync().positions["right"], original, atol=0.002)
-            if axis != release_axis:
+            assert worker.state != "executing"
+            if cancel:
                 console.root.event_generate("<Escape>")
                 assert console.drag is None
                 assert [value.get() for value in console.coordinates] == original_values
@@ -77,28 +81,28 @@ def test_gui_axis_drag_preview_cancel_and_physical_execution(release_axis):
                 console.canvas.event_generate("<ButtonRelease-1>", x=end[0], y=end[1])
                 assert console.drag is None
                 assert session.plan is not None, session.rejection_reason
-                assert console.execute_button.instate(["!disabled"])
+                assert worker.state in ("executing", "completed")
+        for axis in (0, 1, 2):
+            drag_axis(axis, 2, cancel=True)
+            np.testing.assert_allclose(session.sync().positions["right"], original, atol=0.002)
+        drag_axis(release_axis, 2)
         target = session.plan.target.copy()
-        np.testing.assert_allclose(session.sync().positions["right"], original, atol=0.002)
-        console.execute()
-        pump(console, lambda: worker.state == "completed")
+        first_plan = session.plan
+        pump(console, lambda: worker.completed_plan is first_plan and console.last_report is worker.report)
         session.sync()
         assert np.linalg.norm(session.twin.tcp_position("right") - target) < 0.015
-        pump(console, lambda: console.last_report is worker.report and console.preview_started is None)
-        assert console.display_mode.get() == "Live"
+        assert console.view_label.get() == "LIVE ROBOT"
         previous = session.sync().positions["right"].copy()
-        following_target = session.reference.from_world(session.twin.tcp_position("right")) + [1, 0, 2]
-        for variable, value in zip(console.coordinates, following_target):
-            variable.set(str(value))
-        console.preview_button.invoke()
+        drag_axis(0, 5, cancel=True)
+        np.testing.assert_allclose(session.sync().positions["right"], previous, atol=0.002)
+        assert session.plan is first_plan
+        drag_axis(2, 2)
         assert session.plan is not None, session.rejection_reason
         following_plan = session.plan
         np.testing.assert_allclose(following_plan.trajectory.positions[0], previous, atol=0.002)
         assert np.linalg.norm(following_plan.trajectory.positions[0]) > 0.02
-        console.execute_button.invoke()
         pump(console, lambda: worker.completed_plan is following_plan and console.last_report is worker.report)
-        assert console.preview_started is None
-        assert console.display_mode.get() == "Live"
+        assert console.view_label.get() == "LIVE ROBOT"
         measured = session.sync()
         np.testing.assert_allclose(session.preview.data.qpos[session.preview.qpos_ids["right"]], measured.positions["right"], atol=1e-12)
         assert np.linalg.norm(session.twin.tcp_position("right") - following_plan.target) < 0.015

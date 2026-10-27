@@ -46,7 +46,7 @@ def test_console_start_and_arm_selection_use_measured_tcp():
             np.testing.assert_allclose([float(value.get()) for value in console.coordinates], expected, atol=0.006)
             np.testing.assert_allclose(session.sync().positions[arm], np.zeros(7), atol=0.002)
             assert session.plan is None
-            assert console.execute_button.instate(["disabled"])
+            assert worker.state == "connected"
     finally:
         if console is not None and not console.closed:
             console.close()

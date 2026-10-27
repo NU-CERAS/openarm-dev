@@ -26,10 +26,10 @@ This installs MuJoCo, mink IK and OMPL. CUDA, PyTorch and ROS are optional.
 OPENARM_PYTHON="$(command -v python)" bash projects/cartesian_console/scripts/run_sync.sh
 ```
 
-The English interface provides a large native-resolution viewport with Live and
-Preview modes. Drag a TCP axis or enter XYZ in centimeters from the fixed torso
-top center, preview, execute, observe the arm,
-adjust the coordinate and save a named target. The demo uses an independent
+The English interface provides a large native-resolution live viewport. Drag a
+TCP axis and release to plan and execute its XYZ target from measured feedback.
+Coordinates are displayed in centimeters from the fixed torso top center.
+Save a reached position for reuse. The demo uses an independent
 MuJoCo robot as the controlled plant. Opening the interface starts no motion.
 The demo starts both arms at joint zero; physical startup reads the actual arm
 feedback. The coordinate fields start at the measured TCP from the torso top.

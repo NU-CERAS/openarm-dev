@@ -13,7 +13,7 @@ to select an explicit interpreter with this project installed.
 It sets the project cache directory, limits CPU threads, obtains the shared
 compute slot and opens the English interface. No ROS services are needed for
 the direct SocketCAN adapter. The robot transport, live twin, trajectory planner
-and preview are started together and closed with the window.
+and planning model are started together and closed with the window.
 The GUI holds the shared compute slot until it closes.
 
 The default planner is OMPL RRTConnect with MuJoCo collision checks. It requires
@@ -49,7 +49,7 @@ installation and direct IK mode.
 
 The demo runs an independent native MuJoCo robot that executes joint commands.
 Its joint positions and velocities drive a separate live twin. A third model
-displays the trajectory preview. Previewing changes the preview model only.
+performs IK and collision-checked trajectory planning.
 This uses physical simulation and the same trajectory submission path as the
 hardware adapter. It does not establish physical robot performance.
 
@@ -57,42 +57,39 @@ hardware adapter. It does not establish physical robot performance.
 
 1. Select **Right arm** or **Left arm**. Drag a TCP arrow: red **X**, green **Y**
    or blue **Z**. Only that coordinate changes, measured in centimeters from
-   the torso top origin. Release the mouse to create a collision-checked preview.
-   **Esc** cancels a drag and restores the previous coordinates and preview.
-   The robot holds its position throughout target editing and previewing.
-2. In **Live** mode the arrows start at the measured TCP. In **Preview** mode
-   they manipulate the planned final TCP target. Arrow tips and shafts are
+   the torso top origin. Release the mouse to plan and execute the target.
+   **Esc** cancels a drag and restores the previous coordinates.
+   The robot holds its position while the mouse is held.
+2. The arrows start at the measured TCP. Arrow tips and shafts are
    draggable. Choose **Overview** if an axis points toward the viewing direction.
    Changing the view or resizing cancels an active drag.
-3. Check **Preview** mode. The orange marker identifies the TCP target. Use
-   **Live** to inspect measured robot posture. An unreachable or opposite-side
-   point displays guidance and leaves **Execute motion** disabled.
-4. Select **Execute motion**. The viewport switches to **Live** and the robot executes
-   the checked trajectory. **Stop** cancels motion. Connecting, selecting a target,
-   loading a position and previewing start no physical movement.
-5. Observe the physical arm directly. Adjust the sim target and repeat until the
-   physical position is satisfactory. The **Adjust** tab provides small XYZ
-   increments in centimeters; **Use current TCP** displays the current TCP
-   relative to the same torso top origin.
-6. After reaching the target, enter a name under **Saved positions** and choose
+3. After release, the orange marker identifies the target and the robot follows
+   its collision-checked trajectory. The viewport displays measured robot posture
+   throughout movement. An unreachable or opposite-side target displays guidance
+   and starts no motion. **Stop** cancels active movement.
+4. Observe the physical arm directly, then drag another target when the current
+   motion completes. The read-only XYZ fields display the coordinate sent to the
+   planner. **Use current TCP** refreshes them from measured robot feedback.
+5. After reaching the target, enter a name under **Saved positions** and choose
    **Save this position**. The file stores the sim target, planned final joints,
    measured joints, model-derived TCP, execution state and backend. The file
    also records the reference site, its transform and target coordinates in cm.
-7. **Load position** restores a saved target and creates a fresh preview from
-   current feedback. It becomes available after a matching position is saved.
-   Execution checks both arms against the preview start; changes above 0.03 rad
+6. **Move to saved position** restores a saved coordinate, plans from current
+   feedback and executes it. It becomes available after a matching position is
+   saved. Execution checks both arms against the measured planning start;
+   changes above 0.03 rad
    reject the trajectory.
 
 Every new plan reads fresh feedback from both arms and starts at the measured
 joint positions. During execution, both simulation models follow the robot's
-feedback. Completion publishes a final measured state, clears preview playback
-and selects Live. The next reach begins from this measured state. The same
+feedback. Completion publishes a final measured state. The next drag and reach
+begin from this measured state. The same
 planning and synchronization path is used for native MuJoCo and physical CAN.
-An inconsistent trajectory start is rejected before execution. Preview animation
-holds the controlled robot at its actual pose until Execute motion is selected.
+An inconsistent trajectory start is rejected before execution. Releasing a TCP
+drag is the movement trigger in both simulation and physical CAN modes.
 
-Numeric X/Y/Z fields remain available for exact coordinate entry; choose
-**Preview reach** after editing. Table clicks select X/Y while retaining Z.
+The XYZ coordinate values remain the input to the existing planning interface.
+The live viewport follows robot feedback while the planned target is displayed.
 Drag handles are disabled during robot execution. Session logs record the chosen
 axis, drag origin, final coordinates and cancellations.
 
@@ -102,7 +99,7 @@ enlarging a low-resolution image. Text and target markers use native Tk drawing.
 Joint values and planner details are available in the **Feedback** tab.
 
 Targets are stored in `runs/cartesian_console/sync/targets.json` by default.
-`--targets PATH` selects another file. Each GUI session writes preview trajectories,
+`--targets PATH` selects another file. Each GUI session writes planned trajectories,
 feedback JSONL and execution reports under `runs/cartesian_console/sync/sessions/`.
 The session log also records selected target coordinates and planning rejections.
 The console's default joint speed limit is 0.2 rad/s, with 0.5 rad/s² acceleration;
@@ -188,15 +185,15 @@ bash projects/cartesian_console/scripts/run_sync.sh \
 
 This records `sync_demo.mp4`, the measured joint/TCP trace in `report.json`, and
 a saved target in `targets.json`. Automatic recording is restricted to the
-MuJoCo demo backend. `--smoke-test` exercises the actual Tk interface, preview,
-execution, target saving/loading and shutdown, then exits automatically.
+MuJoCo demo backend. `--smoke-test` exercises actual Tk dragging, automatic
+execution, target saving/reuse and shutdown, then exits automatically.
 
 Physical CAN execution remains unverified until actual interface names,
 reviewed configuration files and connected arms are available.
 
 ## Local verification
 
-Tests exercise actual MuJoCo execution, measured feedback, preview isolation,
+Tests exercise actual MuJoCo execution, measured feedback, drag cancellation,
 stale/changed starts, cancellation, saved targets and cross-process ownership
-locks. The GUI smoke test runs preview, execution, save, load and shutdown.
+locks. The GUI smoke test runs dragging, execution, save, reuse and shutdown.
 The placeholder configuration is rejected before hardware connection.

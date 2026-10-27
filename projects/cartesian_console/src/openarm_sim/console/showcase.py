@@ -123,11 +123,11 @@ class GuiRecording:
             raise RuntimeError(self.console.session.rejection_reason)
         self.pump(1.5)
 
-    def execute(self):
+    def wait_for_motion(self):
         session = self.console.session
+        plan = session.plan
         target = session.plan.target.copy()
-        self.console.execute_button.invoke()
-        self.wait(lambda: session.worker.state == "completed")
+        self.wait(lambda: session.worker.state == "completed" and session.worker.completed_plan is plan)
         session.sync()
         if np.linalg.norm(session.twin.tcp_position(session.plan.trajectory.arm) - target) > 0.015:
             raise RuntimeError("Recorded execution did not reach its target")
@@ -152,39 +152,39 @@ def record_gui(output, planner, display):
         console = SyncConsole(session, output / "saved_positions.json")
         recording = GuiRecording(console, output, display)
         recording.pump(2)
+        recording.mark("02  Drag Z - release to lift from joint zero")
+        recording.drag(2, 6)
+        recording.wait_for_motion()
+        console.name.set("right_lift")
+        console.save_button.invoke()
+        recording.mark("03  Drag X - plan and move from measured feedback")
+        recording.drag(0, 4)
+        recording.wait_for_motion()
+        recording.mark("04  Drag Y - continue from the current robot pose")
+        recording.drag(1, -2)
+        right = recording.wait_for_motion()
         initial = session.sync().positions["right"].copy()
-        recording.mark("02  Preview a torso-relative target: (40, -25, -30) cm")
-        for variable, value in zip(console.coordinates, [40, -25, -30]):
-            variable.set(str(value))
-        console.preview_button.invoke()
-        recording.pump(2)
-        for axis in range(3):
-            recording.mark(f"03  Drag TCP {'XYZ'[axis]} - release to replan")
-            recording.drag(axis, 2)
-        recording.mark("04  Escape cancels a drag and restores its target")
+        recording.mark("05  Escape cancels a drag and restores its target")
         previous = [v.get() for v in console.coordinates]
         recording.drag(0, 5, cancel=True)
         if [v.get() for v in console.coordinates] != previous:
             raise RuntimeError("Escape did not restore the original target")
         np.testing.assert_allclose(session.sync().positions["right"], initial, atol=0.002)
-        recording.mark("05  Execute motion - live feedback follows actual joint motion")
-        right = recording.execute()
-        console.name.set("right_demo")
-        console.save_button.invoke()
-        recording.mark("06  Switch arms and reach a mirrored centimeter target")
+        recording.mark("06  Switch arms and drag the left TCP")
         console.arm.set("left")
-        for variable, value in zip(console.coordinates, [40, 25, -30]):
-            variable.set(str(value))
-        console.preview_button.invoke()
-        recording.pump(2)
-        left = recording.execute()
+        recording.pump(1)
+        recording.drag(2, 6)
+        recording.wait_for_motion()
+        recording.drag(0, 4)
+        left = recording.wait_for_motion()
         console.name.set("left_demo")
         console.save_button.invoke()
-        recording.mark("07  Load a named position and preview from current feedback")
-        console.name.set("right_demo")
+        recording.mark("07  Move to a saved position from current feedback")
+        console.name.set("right_lift")
         console.load_button.invoke()
         if session.plan is None:
-            raise RuntimeError("Loading a saved position did not create a preview")
+            raise RuntimeError("Loading a saved position did not create its coordinate motion")
+        right = recording.wait_for_motion()
         recording.pump(3)
         return {"right_execution": right, "left_execution": left,
                 "reference_site": session.reference.site, "reference_origin_m": session.reference.origin_m.tolist()}
