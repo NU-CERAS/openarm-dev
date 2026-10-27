@@ -28,7 +28,7 @@ class Feedback:
 @dataclass
 class Preview:
     trajectory: JointTrajectory
-    target: np.ndarray
+    target: np.ndarray | None
     start: Feedback
 
 
@@ -332,7 +332,7 @@ class CanPlant:
 
 
 class RobotWorker:
-    def __init__(self, backend="demo", configuration=None, scene=None, realtime=True, show_plant=False):
+    def __init__(self, backend="demo", configuration=None, scene=None, realtime=True, show_plant=False, ros_namespace=""):
         if show_plant and backend != "demo":
             raise ValueError("The independent MuJoCo plant viewer requires the demo backend")
         self.commands = queue.Queue(maxsize=1)
@@ -350,6 +350,7 @@ class RobotWorker:
         self.scene = scene
         self.realtime = realtime
         self.show_plant = show_plant
+        self.ros_namespace = ros_namespace
         self.thread = threading.Thread(target=self._run, name="openarm-robot-transport", daemon=False)
         self.thread.start()
 
@@ -368,7 +369,11 @@ class RobotWorker:
 
     def _serve(self):
         with ExitStack() as resources:
-            if self.backend == "demo":
+            if self.backend == "ros":
+                from .ros_transport import RosPlant
+
+                plant = RosPlant(self.ros_namespace)
+            elif self.backend == "demo":
                 plant = MujocoProcessPlant(self.scene, self.realtime) if self.show_plant else MujocoPlant(self.scene, self.realtime)
             else:
                 plant = CanPlant(self.configuration)

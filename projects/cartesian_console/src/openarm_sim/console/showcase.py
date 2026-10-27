@@ -6,6 +6,7 @@ import secrets
 import shutil
 import socket
 import subprocess
+import sys
 import time
 from tkinter import StringVar, ttk
 
@@ -146,11 +147,18 @@ class GuiRecording:
 
 
 def record_gui(output, planner, display):
-    worker = RobotWorker()
+    from .launch import stop_backend
+
+    namespace = f"/showcase_{time.time_ns()}"
+    log = (output / "backend.log").open("w")
+    backend = subprocess.Popen([sys.executable, "-m", "openarm_sim.console.ros_backend", "--namespace", namespace],
+                               stdout=log, stderr=subprocess.STDOUT)
+    worker = None
     session = None
     console = None
     recording = None
     try:
+        worker = RobotWorker("ros", ros_namespace=namespace)
         if not worker.ready.wait(10):
             raise TimeoutError("Demonstration robot did not become ready")
         session = SyncSession(worker, planner)
@@ -194,14 +202,22 @@ def record_gui(output, planner, display):
         return {"right_execution": right, "left_execution": left,
                 "reference_site": session.reference.site, "reference_origin_m": session.reference.origin_m.tolist()}
     finally:
-        if recording is not None:
-            recording.close()
-        if console is not None and not console.closed:
-            console.close()
-        elif session is not None:
-            session.close()
-        else:
-            worker.close()
+        try:
+            if recording is not None:
+                recording.close()
+        finally:
+            try:
+                if console is not None and not console.closed:
+                    console.close()
+                elif session is not None:
+                    session.close()
+                elif worker is not None:
+                    worker.close()
+            finally:
+                try:
+                    stop_backend(backend)
+                finally:
+                    log.close()
 
 
 @budgeted("openarm_sim.console.showcase")

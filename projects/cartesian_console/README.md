@@ -1,24 +1,26 @@
 # Cartesian Console
 
-OpenArm tabletop simulation, feedback-driven hardware synchronization, collision
-avoidance and skill learning. The default OMPL planner runs on CPU. cuRobo is an
-optional CUDA backend.
+OpenArm tabletop preview, ROS 2 robot execution, collision avoidance and skill
+learning. The console uses the shared `openarm_tools.ros_execution` interface
+for simulation and physical robot commands/feedback. Planning and training use
+MuJoCo locally. OMPL runs on CPU; cuRobo is optional.
 
 Use the [fresh-checkout guide](docs/getting-started.md) for a complete CPU setup,
 first launch, feature recording and the physical connection placeholders.
 
 ## Install
 
-From the repository root on an Ubuntu 24.04 x86_64 desktop:
+Use the root platform setup with the console profile:
 
 ```bash
-bash projects/cartesian_console/scripts/setup.sh
+bash setup/linux.sh --console
 ```
 
-This installs system dependencies and a private Python 3.12 environment with
-pinned CPU dependencies, then checks planning, physical execution and rendering.
-System package installation requests sudo when required. Repeated setup reuses
-the environment. CUDA, PyTorch and ROS are optional.
+Ubuntu and WSL use the root ROS Jazzy `.venv`. Windows setup accepts `-Console`.
+Apple Silicon uses `bash setup/mac.sh --console` and the locked Pixi `console`
+environment; its OMPL wheel requires macOS 15 or newer. Mac/WSL runtime checks
+require those actual systems. The project `scripts/setup.sh` delegates to the
+root platform installer. A graphical desktop is required for the GUI.
 
 ## Start the tabletop console
 
@@ -26,14 +28,15 @@ the environment. CUDA, PyTorch and ROS are optional.
 bash projects/cartesian_console/scripts/run_demo.sh
 ```
 
-The English interface reads both arms at startup and displays their measured
+The English interface subscribes to `/joint_states` at startup and displays both arms' measured
 pose in a single native-resolution sim preview. Drag a TCP axis and release to
 display the planned target pose. Choose **Execute action** to move the robot.
 The preview holds the target during execution, then automatically synchronizes
 its posture, TCP handles and coordinates from feedback for the next action.
 Coordinates are displayed in centimeters from the fixed torso top center.
 Save a reached position for reuse. The demo uses an independent
-MuJoCo robot as the controlled plant. Opening the interface starts no motion.
+MuJoCo robot in a ROS execution node. A separate window renders its measured
+ROS feedback. Opening the interface starts no motion.
 The demo starts both arms at joint zero; physical startup reads the actual arm
 feedback. The coordinate fields start at the measured TCP from the torso top.
 
@@ -49,11 +52,11 @@ independent robot stationary until **Execute action** is selected.
 
 For physical hardware, fill `configs/sync_hardware.example.json` using the
 [connection and operating guide](docs/sync-console.md). The current adapter uses
-the shared SocketCAN backend and seven motors per arm. Hardware connection
+the shared SocketCAN backend behind the ROS execution node and seven motors per arm. Hardware connection
 parameters are placeholders until configured for the actual robot.
 
 ```bash
-bash projects/cartesian_console/scripts/setup.sh --hardware
+bash setup/linux.sh --console --hardware
 ```
 
 Hardware setup installs the pinned CAN binding and creates configuration
@@ -88,9 +91,17 @@ installation requires compatible CUDA.
 ## Other demos and learning
 
 ```bash
-source runs/cartesian_console/env/bin/activate
+source /opt/ros/jazzy/setup.bash
+source .venv/bin/activate
 openarm-reach --scene pickup
 openarm-reach --scene strike
+```
+
+For learning, activate a separate compatible Python 3.12 environment and install
+the corresponding extras:
+
+```bash
+python -m pip install -e './projects/cartesian_console[rl,gpu-sim,tracking,imitation,video,assets]'
 openarm-train-drum --help
 openarm-collect-act --help
 openarm-train-act --help
@@ -100,16 +111,26 @@ openarm-train-strike --help
 openarm-record-policy --help
 ```
 
-Install the corresponding extras for these workflows:
-
-```bash
-python -m pip install -e './projects/cartesian_console[rl,gpu-sim,tracking,imitation,video,assets]'
-```
-
 GPU training requires a compatible CUDA PyTorch installation. Training,
 collection and evaluation run serially within the shared compute budget.
 Opening a demo starts no training. Checkpoints and datasets are supplied through
 CLI paths; generated artifacts are stored under `runs/cartesian_console/`.
+Use a separate compatible environment for CUDA training dependencies.
+
+## ROS execution endpoints
+
+Both execution nodes expose `/{left,right}_joint_trajectory_controller/follow_joint_trajectory`
+using `control_msgs/action/FollowJointTrajectory`, and publish measured
+`sensor_msgs/JointState` on `/joint_states`. `--namespace` scopes these names.
+`--target remote` attaches the console to an already-running compatible robot.
+
+```bash
+bash projects/cartesian_console/scripts/run_sync.sh --target remote --namespace /robot
+```
+
+The root `openarm_mujoco_sim` ROS-control launch supports
+`trajectory_control:=true` to expose the same action endpoints. Use the root
+`--build-ros` setup option and source the built workspace before launching it.
 
 | Guide | Purpose |
 | --- | --- |

@@ -31,6 +31,11 @@ openarm sim
 
 Setup installs ROS Jazzy, MuJoCo, Pinocchio and shared tools. Windows runs ROS and MuJoCo together **inside WSL**, not as separate Windows/WSL processes. SocketCAN hardware access requires Linux and a compatible adapter. See [setup](setup/README.md) for optional ROS-control builds and CAN bindings.
 
+For the [Cartesian Console](projects/cartesian_console/README.md), add `--console`
+to the Linux/Mac installer or `-Console` to Windows setup. Then run
+`bash projects/cartesian_console/scripts/run_demo.sh`. Simulation and physical
+execution use the shared ROS 2 trajectory-action and joint-state interface.
+
 ## Common commands
 
 Simulation is the default. Angles and increments are radians. Commands work from any directory after editable installation.

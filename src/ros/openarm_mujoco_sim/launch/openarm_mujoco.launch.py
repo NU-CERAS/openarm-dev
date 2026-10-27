@@ -13,6 +13,7 @@ Move the left arm (7 joint angles in radians):
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction, Shutdown
+from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterFile, ParameterValue
@@ -20,8 +21,6 @@ from launch_ros.substitutions import FindPackageShare
 
 CONTROLLERS = [
     "joint_state_broadcaster",
-    "left_forward_position_controller",
-    "right_forward_position_controller",
     "left_gripper_controller",
     "right_gripper_controller",
 ]
@@ -71,12 +70,20 @@ def launch_setup(context, *args, **kwargs):
             )
         )
 
+    for arm in ("left", "right"):
+        for kind, condition in (("joint_trajectory", IfCondition), ("forward_position", UnlessCondition)):
+            nodes.append(Node(package="controller_manager", executable="spawner",
+                              arguments=[f"{arm}_{kind}_controller", "--param-file", controllers_file],
+                              condition=condition(LaunchConfiguration("trajectory_control")), output="both"))
+
     return nodes
 
 
 def generate_launch_description():
     return LaunchDescription(
         [
+            DeclareLaunchArgument("trajectory_control", default_value="false",
+                                  description="Expose FollowJointTrajectory actions for shared execution clients"),
             DeclareLaunchArgument(
                 "headless",
                 default_value="false",

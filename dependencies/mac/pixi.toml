@@ -7,7 +7,6 @@ platforms = ["osx-arm64"]
 python = "3.12.*"
 pip = "*"
 numpy = ">=1.26,<3"
-mujoco = ">=3.3,<4"
 pinocchio = ">=3,<4"
 ros-jazzy-desktop = ">=0.11,<0.12"
 ros-dev-tools = ">=1,<2"
@@ -15,3 +14,20 @@ colcon-common-extensions = ">=0.3,<0.4"
 
 [pypi-dependencies]
 openarm-tools = {path = "../..", editable = true}
+
+[feature.console.dependencies]
+tk = ">=8.6,<9"
+pillow = ">=11,<13"
+
+[feature.console.system-requirements]
+macos = "15.0"
+
+[feature.native.dependencies]
+mujoco = ">=3.3,<4"
+
+[feature.console.pypi-dependencies]
+openarm-sim = {path = "../../projects/cartesian_console", editable = true, extras = ["dev", "video"]}
+
+[environments]
+default = {features = ["native"]}
+console = {features = ["console"]}
