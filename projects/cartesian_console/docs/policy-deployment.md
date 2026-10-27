@@ -39,18 +39,21 @@ MuJoCo. The current models require a 20 ms step; commands arriving less than
 Install the project from the repository root:
 
 ~~~bash
-python -m pip install -e . -e './projects/cartesian_console[dev]'
-openarm-policy-replay runs/cartesian_console/learned_policy_demo/policy_trace.jsonl \
+bash projects/cartesian_console/scripts/setup.sh
+source runs/cartesian_console/env/bin/activate
+openarm-policy-replay runs/cartesian_console/policy_demo/policy_trace.jsonl \
   --mode absolute
-openarm-policy-replay runs/cartesian_console/learned_policy_demo/policy_trace.jsonl \
+openarm-policy-replay runs/cartesian_console/policy_demo/policy_trace.jsonl \
   --mode absolute --backend sim --initialize-sim --execute \
   --output runs/cartesian_console/deployment/pickup_replay.json
-openarm-policy-replay runs/cartesian_console/learned_policy_demo/strike/policy_trace.jsonl \
+openarm-policy-replay runs/cartesian_console/policy_demo/strike/policy_trace.jsonl \
   --mode strike_residual --backend sim --initialize-sim --execute \
   --output runs/cartesian_console/deployment/strike_replay.json
 ~~~
 
-Use an actual trace produced by openarm-record-policy. The default command only
+Generate the traces with `openarm-record-policy --output runs/cartesian_console/policy_demo`
+using the [demonstration reproduction guide](getting-started.md).
+The default replay command only
 inspects the selected episode and prints its required starting joints and
 gripper position. --episode selects a recorded episode, starting at zero.
 The initial state is loaded into MuJoCo only with --initialize-sim. Simulation
@@ -66,15 +69,11 @@ Joint order and limits are validated against the shared v1.0 model. Optional
 motor_zero_rad and sign values define the reversible model/motor mapping for
 both the console and policy adapter.
 
-Install the exact CAN dependency from dependencies/upstream.repos in the active
-Python environment. The repository's Ubuntu dependency list includes CLI11:
+Install the pinned CAN dependency and activate the environment:
 
 ~~~bash
-sudo apt-get install build-essential cmake libcli11-dev
-mkdir -p runs/cartesian_console/cache
-export TMPDIR="$PWD/runs/cartesian_console/cache"
-python -m pip install \
-  'openarm_can @ git+https://github.com/enactic/openarm_can.git@bfd4e52194aefe38389fa6e670be3738136facb9#subdirectory=python'
+bash projects/cartesian_console/scripts/setup.sh --hardware
+source runs/cartesian_console/env/bin/activate
 ~~~
 
 Copy configs/policy_gripper.example.json under runs/ and fill the actual motor
@@ -132,8 +131,5 @@ Trace replay executes recorded commands and can be used when those inputs are
 provided by a separately operated simulation. Robot tracking uses real encoder
 feedback throughout replay.
 
-Native MuJoCo tests cover actual grasp/lift and strike contact through the
-adapter, startup feedback, invalid action timing, speed rejection and shutdown.
-The pinned CAN binding is compiled and API-checked locally. Connected physical
-arm/gripper execution remains unverified until the actual hardware and reviewed
+Connected physical arm/gripper execution remains unverified until the actual hardware and reviewed
 configuration are available.

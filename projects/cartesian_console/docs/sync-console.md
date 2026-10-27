@@ -8,8 +8,9 @@ From the repository root:
 bash projects/cartesian_console/scripts/run_sync.sh
 ```
 
-The launcher uses `python3` from the active environment. Set `OPENARM_PYTHON`
-to select an explicit interpreter with this project installed.
+Install with `bash projects/cartesian_console/scripts/setup.sh` from the repository
+root. The launcher selects the installed private environment automatically.
+Set `OPENARM_PYTHON` to select an explicit interpreter with this project installed.
 It sets the project cache directory, limits CPU threads, obtains the shared
 compute slot and opens the English interface. No ROS services are needed for
 the direct SocketCAN adapter. The robot transport, live twin, trajectory planner
@@ -44,8 +45,10 @@ top. Physical startup reads both arms and initializes the twin from their actual
 joint feedback. Connecting sends no motor enable, motion or firmware-zero
 command. Each session records its initial joints and TCP in `startup.json`.
 Internal planning and actuator interfaces retain their existing meter/radian units.
-See [motion planning](motion-planning.md) for CPU software rendering, cuRobo
-installation and direct IK mode.
+Use `OPENARM_SOFTWARE_RENDERING=1` before the launch command for Mesa rendering.
+`--planner mink` selects direct IK/interpolation with collision rejection.
+For cuRobo installation, activate the environment and run
+`bash projects/cartesian_console/scripts/setup_curobo.sh` from the repository root.
 
 The demo runs an independent native MuJoCo robot that executes joint commands.
 Its joint positions and velocities drive a separate live twin. A third model
@@ -154,8 +157,8 @@ separate CAN interfaces for the two arms so both actual poses are available for
 the bimanual collision model. There is no assumption that an unobserved arm is
 in its home pose.
 
-Use the repository's `setup/linux.sh --hardware` instructions to install the
-pinned OpenArm CAN bindings. The adapter and CAN interfaces must be configured
+Run `bash projects/cartesian_console/scripts/setup.sh --hardware` to install the
+pinned OpenArm CAN bindings and create the connection templates. The adapter and CAN interfaces must be configured
 and active according to the actual hardware. Check interface names with
 `ip -details link show type can`. Interface bitrate and device setup remain
 hardware-specific placeholders; the launcher does not guess those values.

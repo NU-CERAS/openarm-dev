@@ -7,32 +7,16 @@ asset. Run these commands in Bash.
 
 Use a graphical desktop login with systemd user services available. The shared
 compute guard uses systemd-run --user to enforce memory and CPU limits.
+The guard requires at least 8 GiB of available memory throughout execution.
 
-## 1. Python environment
+## 1. Get the branch
 
-The desktop needs Git, curl, OpenGL/Mesa libraries and DejaVu fonts. On Ubuntu:
+Install Git if needed:
 
 ~~~bash
 sudo apt-get update
-sudo apt-get install git curl libgl1 libglx-mesa0 libgl1-mesa-dri fonts-dejavu-core
+sudo apt-get install -y git
 ~~~
-
-Install Miniforge using its [official installation instructions](https://github.com/conda-forge/miniforge).
-For a fresh Linux x86_64 machine:
-
-~~~bash
-curl -L -o Miniforge3.sh \
-  https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
-bash Miniforge3.sh -b -p "$HOME/miniforge3"
-source "$HOME/miniforge3/etc/profile.d/conda.sh"
-conda create -n openarm-console --override-channels -c conda-forge python=3.12 tk pip
-conda activate openarm-console
-~~~
-
-If Miniforge is already installed, activate its shell integration and create
-the new environment. Keep your existing installation.
-
-## 2. Get the branch and install
 
 While this contribution is under review:
 
@@ -40,25 +24,51 @@ While this contribution is under review:
 git clone --single-branch --branch feat/jixin \
   https://github.com/jixinyan/openarm-dev.git
 cd openarm-dev
-mkdir -p runs/cartesian_console/cache
-export TMPDIR="$PWD/runs/cartesian_console/cache"
-python -m pip install -e . -e './projects/cartesian_console[dev,video]'
 ~~~
 
-The CPU demo uses the robot models committed under robots/v1.0/; it needs no
-vendor submodule installation. The shared tools and independent project package
-must both be installed in editable mode.
+## 2. Install the environment
+
+~~~bash
+bash projects/cartesian_console/scripts/setup.sh
+~~~
+
+This command installs missing Ubuntu system packages using sudo, creates a
+private Python 3.12 environment at `runs/cartesian_console/env/`, installs the
+exact CPU package versions from `requirements-ubuntu-cpu.txt`, installs both
+editable project packages, and checks dependencies, actual OMPL reaches,
+feedback synchronization, Tk and rendering. Repeating setup reuses the
+environment. Existing hardware configuration files are preserved.
+
+The CPU demo uses committed models under `robots/v1.0/`. The installation needs
+Internet access. Conda, ROS and CUDA are optional. The script requires Ubuntu
+24.04 x86_64; macOS is not supported by this installer.
+
+Administrators who have already installed the system packages may use
+`--skip-system-packages`. `--python /path/to/python3.12` selects another Python
+3.12 interpreter with Tk. `OPENARM_ENV` selects an explicit environment directory;
+use the same value for setup and subsequent launcher commands. For an existing
+manually installed environment, set `OPENARM_PYTHON` to its interpreter.
+
+| Script | Purpose |
+| --- | --- |
+| `scripts/setup.sh` | Install the CPU environment and perform native checks |
+| `scripts/setup.sh --hardware` | Also install the pinned CAN binding and create hardware templates |
+| `scripts/check_setup.sh` | Check dependencies, graphics and two feedback-driven reaches |
+| `scripts/check_setup.sh --gui` | Also check both actual demo windows and automatic sync |
+| `scripts/run_demo.sh` | Open the console and independent MuJoCo test robot |
+| `scripts/run_robot.sh --supported` | Connect the configured physical robot and open the console |
+
+Script paths in the table are relative to `projects/cartesian_console/`.
 
 ## 3. Open the interface
 
 ~~~bash
-bash projects/cartesian_console/scripts/run_sync.sh
+bash projects/cartesian_console/scripts/run_demo.sh
 ~~~
 
-The script uses the active environment's python3. OPENARM_PYTHON selects an
-explicit interpreter. It starts the independent MuJoCo robot, feedback transport,
-live twin, motion planner and interface together. Closing the window releases
-the process and its compute slot.
+The launchers select the installed private environment automatically. The demo
+opens the console and a separate-process MuJoCo robot window. Closing the console
+closes the robot process and releases the compute slot.
 
 1. Select an arm.
 2. Drag its TCP's red X, green Y or blue Z arrow. Release to preview the target pose.
@@ -69,8 +79,7 @@ the process and its compute slot.
 5. Save a reached position under **Saved positions**; **Preview saved position**
    plans that target from current feedback. Choose **Execute action** to execute it.
 
-Use `bash projects/cartesian_console/scripts/run_sync.sh --show-plant` to open
-an additional MuJoCo window showing the independent demo robot. It receives
+The additional MuJoCo window shows the independent demo robot. It receives
 joint commands only after **Execute action**. The console renders its own
 preview model and requires no camera.
 
@@ -87,28 +96,18 @@ while either arm moves.
 Select Mesa software rendering explicitly when needed:
 
 ~~~bash
-__GLX_VENDOR_LIBRARY_NAME=mesa LIBGL_ALWAYS_SOFTWARE=1 MUJOCO_GL=glfw \
-  bash projects/cartesian_console/scripts/run_sync.sh
+OPENARM_SOFTWARE_RENDERING=1 bash projects/cartesian_console/scripts/run_demo.sh
 ~~~
 
 Close the GUI before starting tests; both use the shared compute slot.
 
 ~~~bash
-CUDA_VISIBLE_DEVICES="" __GLX_VENDOR_LIBRARY_NAME=mesa LIBGL_ALWAYS_SOFTWARE=1 \
-  MUJOCO_GL=glfw python -m openarm_sim.compute_guard \
-  python -m pytest -q projects/cartesian_console/tests/test_gizmo.py \
-  projects/cartesian_console/tests/test_sync.py \
-  projects/cartesian_console/tests/test_reach.py \
-  projects/cartesian_console/tests/test_ompl.py
+bash projects/cartesian_console/scripts/check_setup.sh
+bash projects/cartesian_console/scripts/check_setup.sh --gui
 ~~~
 
-An automatic check opens the actual interface, drags a TCP axis, previews and
-explicitly executes in MuJoCo, saves/reuses a named position and closes:
-
-~~~bash
-bash projects/cartesian_console/scripts/run_sync.sh --smoke-test \
-  --targets runs/cartesian_console/smoke/targets.json
-~~~
+The `--gui` check opens the actual interface, drags a TCP axis, previews and
+explicitly executes in MuJoCo, saves/reuses a named position and closes both windows.
 
 ## 5. Record the feature showcase
 
@@ -116,6 +115,7 @@ For the isolated GUI recorder, install Xvfb and xauth:
 
 ~~~bash
 sudo apt-get install xvfb xauth
+source runs/cartesian_console/env/bin/activate
 openarm-showcase --output runs/cartesian_console/showcase
 ~~~
 
@@ -209,15 +209,19 @@ supplied separately. The source branch contains training/evaluation tools.
 
 ## 7. Physical robot connection
 
+Install the optional binding and prepare the connection templates:
+
+~~~bash
+bash projects/cartesian_console/scripts/setup.sh --hardware
+~~~
+
 Use the [synchronization guide](sync-console.md) to fill the
 configs/sync_hardware.example.json template. Provide both real CAN interface
 names and reviewed v1.0 motor configurations. The adapter commands seven arm
 joints; the grippers remain unchanged.
 
 ~~~bash
-bash projects/cartesian_console/scripts/run_sync.sh \
-  --backend can --hardware-config runs/cartesian_console/sync/hardware.json \
-  --supported
+bash projects/cartesian_console/scripts/run_robot.sh --supported
 ~~~
 
 The shared hardware backend releases motor torque at trajectory completion,

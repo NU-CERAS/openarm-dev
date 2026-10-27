@@ -9,21 +9,21 @@ first launch, feature recording and the physical connection placeholders.
 
 ## Install
 
-From the repository root, using Python 3.12 or newer:
+From the repository root on an Ubuntu 24.04 x86_64 desktop:
 
 ```bash
-mkdir -p runs/cartesian_console/cache
-export TMPDIR="$PWD/runs/cartesian_console/cache"
-python -m pip install -e . -e './projects/cartesian_console[dev]'
+bash projects/cartesian_console/scripts/setup.sh
 ```
 
-This installs MuJoCo, mink IK and OMPL. CUDA, PyTorch and ROS are optional.
-`environment.yml` provides the equivalent conda environment.
+This installs system dependencies and a private Python 3.12 environment with
+pinned CPU dependencies, then checks planning, physical execution and rendering.
+System package installation requests sudo when required. Repeated setup reuses
+the environment. CUDA, PyTorch and ROS are optional.
 
 ## Start the tabletop console
 
 ```bash
-OPENARM_PYTHON="$(command -v python)" bash projects/cartesian_console/scripts/run_sync.sh
+bash projects/cartesian_console/scripts/run_demo.sh
 ```
 
 The English interface reads both arms at startup and displays their measured
@@ -37,19 +37,35 @@ MuJoCo robot as the controlled plant. Opening the interface starts no motion.
 The demo starts both arms at joint zero; physical startup reads the actual arm
 feedback. The coordinate fields start at the measured TCP from the torso top.
 
-For testing with a separate window showing the independently simulated robot:
+For an automated check of the console and independent robot windows:
 
 ```bash
-bash projects/cartesian_console/scripts/run_sync.sh --show-plant
+bash projects/cartesian_console/scripts/check_setup.sh --gui
 ```
 
-That MuJoCo window displays the controlled robot receiving joint commands.
-Dragging in the console leaves it stationary until **Execute action** is selected.
+The check exercises both windows, explicit execution and automatic feedback sync,
+then closes them. During normal operation, dragging in the console leaves the
+independent robot stationary until **Execute action** is selected.
 
 For physical hardware, fill `configs/sync_hardware.example.json` using the
 [connection and operating guide](docs/sync-console.md). The current adapter uses
 the shared SocketCAN backend and seven motors per arm. Hardware connection
 parameters are placeholders until configured for the actual robot.
+
+```bash
+bash projects/cartesian_console/scripts/setup.sh --hardware
+```
+
+Hardware setup installs the pinned CAN binding and creates configuration
+templates under `runs/cartesian_console/sync/`. Fill the actual interfaces and
+review both motor configurations before launch. `--supported` confirms both arms
+have mechanical support because the current backend releases torque after motion.
+
+After completing those configurations:
+
+```bash
+bash projects/cartesian_console/scripts/run_robot.sh --supported
+```
 
 ## Planning backends
 
@@ -60,17 +76,19 @@ parameters are placeholders until configured for the actual robot.
 | `mink` | CPU | IK and direct joint interpolation; rejects colliding paths |
 
 ```bash
-openarm-sync --planner ompl
-openarm-sync --planner curobo
-openarm-reach --planner ompl
+bash projects/cartesian_console/scripts/run_demo.sh --planner ompl
+bash projects/cartesian_console/scripts/run_demo.sh --planner mink
 ```
 
-See [motion planning](docs/motion-planning.md) for backend installation,
-software rendering and collision behavior.
+Use `OPENARM_SOFTWARE_RENDERING=1` before a launcher command to select Mesa.
+For cuRobo, activate the environment and run
+`bash projects/cartesian_console/scripts/setup_curobo.sh` from the repository root;
+installation requires compatible CUDA.
 
 ## Other demos and learning
 
 ```bash
+source runs/cartesian_console/env/bin/activate
 openarm-reach --scene pickup
 openarm-reach --scene strike
 openarm-train-drum --help
@@ -95,42 +113,15 @@ CLI paths; generated artifacts are stored under `runs/cartesian_console/`.
 
 | Guide | Purpose |
 | --- | --- |
+| [Installation and reproduction](docs/getting-started.md) | Setup, launch, checks and policy demonstration reproduction |
 | [Synchronization console](docs/sync-console.md) | Hardware placeholders, operator controls, saved targets and recording |
-| [Motion planning](docs/motion-planning.md) | CPU/GPU backend setup and execution behavior |
-| [Simulation demos](docs/simulation-demo.md) | Camera controls, pickup, strike and VLM tool usage |
-| [Electronic drum asset](docs/electronic-drum-scene.md) | Import and display an independently downloaded asset |
-| [GPU pickup training](docs/gpu-pickup-teacher.md) | MuJoCo Warp environment and teacher commands |
-| [Pickup reward](docs/pickup-reward.md) | Reward terms and task success conditions |
-| [Compute resources](docs/compute-resources.md) | Resource limits, recovery and supervision |
 | [Policy deployment](docs/policy-deployment.md) | RL/ACT action decoding, CAN joint/gripper calibration and command replay |
-
-## Source directories
-
-| Location | Responsibility |
-| --- | --- |
-| `src/openarm_sim/console/` | Feedback transport, synchronization UI and demo recording |
-| `src/openarm_sim/planning/` | OMPL, cuRobo and exported planning assets |
-| `src/openarm_sim/training/` | Training, evaluation, pipeline and W&B entry points |
-| `src/openarm_sim/deployment/` | Policy action processing, continuous CAN execution and trace replay |
-| `src/openarm_sim/` | Shared task environments, observations, ACT models and execution interfaces |
-| `configs/` | Operator connection templates and task settings |
-| `scripts/` | Unified startup and optional cuRobo installation |
-| `tests/` | Actual physics, collision, execution and integration checks |
-| Repository `src/openarm_tools/` | Shared robot configuration and hardware backends |
-| Repository `robots/` | Canonical models, meshes and actuator settings |
-| Repository `runs/cartesian_console/` | Local assets, datasets, checkpoints, recordings and output |
-
-The robot model and joint order come from `openarm_tools.robot.config`.
-`OPENARM_ROOT` selects an explicit checkout. Keep generated output and local
-research notes under `runs/`; commit source, configuration templates and usage
-documentation.
 
 ## Verify
 
 ```bash
-CUDA_VISIBLE_DEVICES="" __GLX_VENDOR_LIBRARY_NAME=mesa LIBGL_ALWAYS_SOFTWARE=1 MUJOCO_GL=glfw \
-  python -m pytest -q projects/cartesian_console/tests/test_ompl.py \
-  projects/cartesian_console/tests/test_sync.py
+bash projects/cartesian_console/scripts/check_setup.sh
+bash projects/cartesian_console/scripts/check_setup.sh --gui
 ```
 
 The complete project suite additionally requires the learning/CUDA extras.
