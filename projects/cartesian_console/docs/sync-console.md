@@ -57,25 +57,31 @@ hardware adapter. It does not establish physical robot performance.
 
 1. Select **Right arm** or **Left arm**. Drag a TCP arrow: red **X**, green **Y**
    or blue **Z**. Only that coordinate changes, measured in centimeters from
-   the torso top origin. Release the mouse to plan and execute the target.
+   the torso top origin. Release the mouse to preview the planned trajectory.
    **Esc** cancels a drag and restores the previous coordinates.
-   The robot holds its position while the mouse is held.
-2. The arrows start at the measured TCP. Arrow tips and shafts are
+   The robot holds its position throughout target editing and preview playback.
+2. In **Live**, the arrows start at the measured TCP. In **Preview**, the arrows
+   edit the planned target. Every new plan starts from measured feedback.
+   Arrow tips and shafts are
    draggable. Choose **Overview** if an axis points toward the viewing direction.
    Changing the view or resizing cancels an active drag.
-3. After release, the orange marker identifies the target and the robot follows
-   its collision-checked trajectory. The viewport displays measured robot posture
-   throughout movement. An unreachable or opposite-side target displays guidance
-   and starts no motion. **Stop** cancels active movement.
-4. Observe the physical arm directly, then drag another target when the current
+3. After release, **Preview** plays the collision-checked trajectory and holds
+   its final pose. The orange marker identifies the target. Select **Live** to
+   inspect the measured robot. An unreachable or opposite-side target displays
+   guidance and disables execution.
+4. Choose **Execute action** to send the planned joint commands. The viewport
+   switches to **Live**, follows measured robot feedback and synchronizes both
+   simulation models after execution. **Stop** cancels active movement.
+5. Observe the physical arm directly, then drag another target when the current
    motion completes. The read-only XYZ fields display the coordinate sent to the
-   planner. **Use current TCP** refreshes them from measured robot feedback.
-5. After reaching the target, enter a name under **Saved positions** and choose
+   planner. **Sync robot state** refreshes the current pose and coordinates from
+   feedback and clears the pending preview.
+6. After reaching the target, enter a name under **Saved positions** and choose
    **Save this position**. The file stores the sim target, planned final joints,
    measured joints, model-derived TCP, execution state and backend. The file
    also records the reference site, its transform and target coordinates in cm.
-6. **Move to saved position** restores a saved coordinate, plans from current
-   feedback and executes it. It becomes available after a matching position is
+7. **Preview saved position** restores a saved coordinate and plans from current
+   feedback. Choose **Execute action** to execute it. Loading becomes available after a matching position is
    saved. Execution checks both arms against the measured planning start;
    changes above 0.03 rad
    reject the trajectory.
@@ -85,11 +91,13 @@ joint positions. During execution, both simulation models follow the robot's
 feedback. Completion publishes a final measured state. The next drag and reach
 begin from this measured state. The same
 planning and synchronization path is used for native MuJoCo and physical CAN.
-An inconsistent trajectory start is rejected before execution. Releasing a TCP
-drag is the movement trigger in both simulation and physical CAN modes.
+An inconsistent trajectory start is rejected before execution. **Execute action**
+is the movement trigger in both simulation and physical CAN modes. Startup,
+dragging, preview playback and loading saved targets send no movement commands.
 
 The XYZ coordinate values remain the input to the existing planning interface.
-The live viewport follows robot feedback while the planned target is displayed.
+The **Live** viewport follows robot feedback; **Preview** displays the planned
+trajectory independently of the controlled robot.
 Drag handles are disabled during robot execution. Session logs record the chosen
 axis, drag origin, final coordinates and cancellations.
 
@@ -185,8 +193,8 @@ bash projects/cartesian_console/scripts/run_sync.sh \
 
 This records `sync_demo.mp4`, the measured joint/TCP trace in `report.json`, and
 a saved target in `targets.json`. Automatic recording is restricted to the
-MuJoCo demo backend. `--smoke-test` exercises actual Tk dragging, automatic
-execution, target saving/reuse and shutdown, then exits automatically.
+MuJoCo demo backend. `--smoke-test` exercises actual Tk dragging, preview,
+explicit execution, target saving/reuse and shutdown, then exits automatically.
 
 Physical CAN execution remains unverified until actual interface names,
 reviewed configuration files and connected arms are available.
@@ -195,5 +203,6 @@ reviewed configuration files and connected arms are available.
 
 Tests exercise actual MuJoCo execution, measured feedback, drag cancellation,
 stale/changed starts, cancellation, saved targets and cross-process ownership
-locks. The GUI smoke test runs dragging, execution, save, reuse and shutdown.
+locks. The GUI smoke test runs dragging, preview, explicit execution, feedback
+synchronization, save, reuse and shutdown.
 The placeholder configuration is rejected before hardware connection.
