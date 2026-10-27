@@ -163,6 +163,14 @@ class ReachSimulation:
         self._stable_time = 0.0
         self.trajectory = None
 
+    def reset_zero(self) -> None:
+        self.reset()
+        for arm in ARMS:
+            self.data.qpos[self.qpos_ids[arm]] = 0
+            self._desired[self.actuator_ids[arm]] = 0
+        self.data.ctrl[:] = self._desired
+        mujoco.mj_forward(self.model, self.data)
+
     def tcp_position(self, arm: str) -> NDArray[np.float64]:
         return self.data.site_xpos[self.site_ids[arm]].copy()
 
@@ -232,7 +240,8 @@ class ReachSimulation:
             raise ValueError("Target must contain three finite coordinates")
         if self.status.state == "running":
             return ReachAcceptance(False, "Motion is running; wait for completion or cancel it")
-        if not (0.14 <= target[0] <= 0.70 and abs(target[1]) <= 0.52 and self.table_height + 0.04 <= target[2] <= 0.85):
+        minimum_x = -0.10 if self.tabletop_mount else 0.14
+        if not (minimum_x <= target[0] <= 0.70 and abs(target[1]) <= 0.52 and self.table_height + 0.04 <= target[2] <= 0.85):
             return ReachAcceptance(False, "Target is outside the demo workspace")
         if (arm == "right" and target[1] > -0.025) or (arm == "left" and target[1] < 0.025):
             return ReachAcceptance(False, "Select a target on the chosen arm's side")

@@ -154,6 +154,8 @@ def record_gui(output, planner, display):
         recording.pump(2)
         initial = session.sync().positions["right"].copy()
         recording.mark("02  Preview a torso-relative target: (40, -25, -30) cm")
+        for variable, value in zip(console.coordinates, [40, -25, -30]):
+            variable.set(str(value))
         console.preview_button.invoke()
         recording.pump(2)
         for axis in range(3):

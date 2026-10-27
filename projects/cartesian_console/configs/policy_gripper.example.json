@@ -1,0 +1,16 @@
+{
+  "schema": "openarm.policy_gripper.v1",
+  "hardware_reviewed": false,
+  "motor_type": "",
+  "send_id": null,
+  "recv_id": null,
+  "kp": null,
+  "kd": null,
+  "model_positions_m": [0.0, 0.044],
+  "motor_positions_rad": [null, null],
+  "max_speed_rad_s": null,
+  "max_tracking_error_rad": null,
+  "max_temperature_c": null,
+  "feedback_timeout_s": null,
+  "command_timeout_s": null
+}

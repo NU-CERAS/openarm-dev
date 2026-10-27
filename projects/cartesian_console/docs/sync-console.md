@@ -35,8 +35,14 @@ frame, 77.3 cm above the mounting plane. The viewport marks this origin and its
 
 X points forward, Y points to the robot's left, and Z points up. For example,
 `(40, -25, -30) cm` requests a TCP 40 cm forward, 25 cm to the right and
-30 cm below the torso top center. This is the default target. The point remains
-fixed as the arms move.
+30 cm below the torso top center. The point remains fixed as the arms move.
+At startup the target fields display the selected arm's measured current TCP.
+Changing the selected arm updates the fields from that arm's current feedback.
+The offline demo starts both seven-joint arms at zero, with the grippers open.
+Its nominal right TCP is approximately `(0.98, -15.35, -69.11) cm` from the torso
+top. Physical startup reads both arms and initializes the twin from their actual
+joint feedback. Connecting sends no motor enable, motion or firmware-zero
+command. Each session records its initial joints and TCP in `startup.json`.
 Internal planning and actuator interfaces retain their existing meter/radian units.
 See [motion planning](motion-planning.md) for CPU software rendering, cuRobo
 installation and direct IK mode.
@@ -131,6 +137,17 @@ feedback timeout and temperature/tracking settings for the actual arms. The
 shared hardware backend requires `hardware_reviewed: true` in the reviewed
 copies. This concerns actuator configuration; it requires no measurement of
 objects in the workspace.
+
+Each joint can specify `motor_zero_rad`, the raw motor angle corresponding to
+model joint zero. The default is `0.0`. Feedback is converted with
+`q_model = sign * (q_motor - motor_zero_rad)`; commands use the inverse mapping.
+The limits and home values in the arm configuration remain model coordinates.
+Startup applies this reviewed mapping. Encoder readings alone do not determine
+a mechanical zero or an external object's location. The existing `openarm zero`
+command records a separate operator-relative software reference.
+
+See [policy deployment](policy-deployment.md) for continuous RL/ACT command
+execution and calibrated gripper control through the same CAN backend.
 
 Once those machine-specific settings are complete, this command starts the
 transport, feedback synchronization, planner and GUI together:

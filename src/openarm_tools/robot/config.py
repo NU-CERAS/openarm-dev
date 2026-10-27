@@ -36,6 +36,7 @@ def load(path=None, robot='v1.0', arm='left'):
             raise ValueError(f'Invalid limits/home for {j["name"]}')
         if finite(j['sign']) not in (-1, 1):
             raise ValueError('Joint sign must be -1 or 1.')
+        finite(j.get('motor_zero_rad', 0.0))
         for key in ('kp', 'kd'):
             if finite(j[key]) < 0:
                 raise ValueError(f'{key} must be nonnegative.')
@@ -61,3 +62,11 @@ def validate_positions(cfg, q):
         if not j['limits'][0] <= value <= j['limits'][1]:
             raise ValueError(f'{j["name"]}: {value:.4f} outside limits {j["limits"]}')
     return list(q)
+
+
+def model_position(joint, motor_value):
+    return finite(joint['sign']) * (finite(motor_value) - finite(joint.get('motor_zero_rad', 0.0)))
+
+
+def motor_position(joint, model_value):
+    return finite(joint.get('motor_zero_rad', 0.0)) + finite(joint['sign']) * finite(model_value)

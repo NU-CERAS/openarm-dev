@@ -67,8 +67,11 @@ the process and its compute slot.
 5. Save a reached position under **Saved positions**, then load it to replan.
 
 Coordinates are centimeters from the torso's top-center point. X is forward,
-Y is left and Z is up. For the right arm, (40, -25, -30) cm is the default
-target. The fixed origin and axes are marked in the viewport. It remains fixed
+Y is left and Z is up. For the right arm, (40, -25, -30) cm is a reachable
+example. At startup the target fields show the current measured TCP; the offline
+demo initializes both seven-joint arms at zero. Physical startup reads both
+actual arm states using the reviewed joint zero/sign mappings. The fixed origin
+and axes are marked in the viewport. It remains fixed
 while either arm moves.
 
 ## 4. CPU software rendering and checks

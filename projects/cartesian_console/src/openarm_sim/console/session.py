@@ -78,6 +78,7 @@ def check_start(plan: Preview, feedback: Feedback, tolerance=0.03):
 class MujocoPlant:
     def __init__(self, scene=None, realtime=True):
         self.sim = ReachSimulation(drum_asset=scene, worktable=scene is None, tabletop_mount=scene is None)
+        self.sim.reset_zero()
         self.realtime = realtime
 
     def read(self):

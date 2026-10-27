@@ -31,6 +31,8 @@ Preview modes. Drag a TCP axis or enter XYZ in centimeters from the fixed torso
 top center, preview, execute, observe the arm,
 adjust the coordinate and save a named target. The demo uses an independent
 MuJoCo robot as the controlled plant. Opening the interface starts no motion.
+The demo starts both arms at joint zero; physical startup reads the actual arm
+feedback. The coordinate fields start at the measured TCP from the torso top.
 
 For physical hardware, fill `configs/sync_hardware.example.json` using the
 [connection and operating guide](docs/sync-console.md). The current adapter uses
@@ -88,6 +90,7 @@ CLI paths; generated artifacts are stored under `runs/cartesian_console/`.
 | [GPU pickup training](docs/gpu-pickup-teacher.md) | MuJoCo Warp environment and teacher commands |
 | [Pickup reward](docs/pickup-reward.md) | Reward terms and task success conditions |
 | [Compute resources](docs/compute-resources.md) | Resource limits, recovery and supervision |
+| [Policy deployment](docs/policy-deployment.md) | RL/ACT action decoding, CAN joint/gripper calibration and command replay |
 
 ## Source directories
 
@@ -96,6 +99,7 @@ CLI paths; generated artifacts are stored under `runs/cartesian_console/`.
 | `src/openarm_sim/console/` | Feedback transport, synchronization UI and demo recording |
 | `src/openarm_sim/planning/` | OMPL, cuRobo and exported planning assets |
 | `src/openarm_sim/training/` | Training, evaluation, pipeline and W&B entry points |
+| `src/openarm_sim/deployment/` | Policy action processing, continuous CAN execution and trace replay |
 | `src/openarm_sim/` | Shared task environments, observations, ACT models and execution interfaces |
 | `configs/` | Operator connection templates and task settings |
 | `scripts/` | Unified startup and optional cuRobo installation |

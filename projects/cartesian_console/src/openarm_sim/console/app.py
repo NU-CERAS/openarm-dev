@@ -22,7 +22,7 @@ from .gizmo import AxisDrag, hit_axis
 class SyncConsole:
     def __init__(self, session: SyncSession, targets: Path, width=None, height=None):
         self.session, self.targets = session, targets
-        self.session.sync()
+        initial_feedback = self.session.sync()
         self.root = tk.Tk()
         self.root.title("OpenArm | Tabletop reach")
         self.root.protocol("WM_DELETE_WINDOW", self.close)
@@ -47,9 +47,17 @@ class SyncConsole:
         self.saved_names = set()
         self.session_directory = RUNS / "sync/sessions" / str(time.time_ns())
         self.session_directory.mkdir(parents=True)
+        write_json(self.session_directory / "startup.json", {
+            "schema": "openarm.console_startup.v1", "backend": session.worker.backend,
+            "reference_site": session.reference.site,
+            "joint_positions_rad": {arm: values.tolist() for arm, values in initial_feedback.positions.items()},
+            "tcp_relative_cm": {arm: session.reference.from_world(session.twin.tcp_position(arm)).tolist()
+                                for arm in ("right", "left")},
+            "motion_commanded": False,
+        })
         self.feedback_log = (self.session_directory / "feedback.jsonl").open("x")
         self.arm = tk.StringVar(value="right")
-        initial_target_cm = session.reference.from_world([0.43, -0.34, 0.56]) if session.preview.drum_asset else (40, -25, -30)
+        initial_target_cm = session.reference.from_world(session.twin.tcp_position(self.arm.get()))
         self.coordinates = [tk.StringVar(value=f"{value:.2f}") for value in initial_target_cm]
         self.increment = tk.StringVar(value="1")
         self.name = tk.StringVar(value="target_1")
@@ -67,7 +75,8 @@ class SyncConsole:
                                  float(sim.model.cam_fovy[camera.camera_id]))
                                 for sim, camera in zip((session.twin, session.preview), self.cameras)]
         self.view(True)
-        for variable in [self.arm, *self.coordinates]:
+        self.arm.trace_add("write", self.select_arm)
+        for variable in self.coordinates:
             variable.trace_add("write", self.invalidate)
         self.name.trace_add("write", self.update_load_button)
         self.refresh_names()
@@ -198,6 +207,11 @@ class SyncConsole:
         position_cm = self.session.reference.from_world(self.session.twin.tcp_position(self.arm.get()))
         for variable, value in zip(self.coordinates, position_cm):
             variable.set(f"{value:.2f}")
+
+    def select_arm(self, *_):
+        self.cancel_drag()
+        self.invalidate()
+        self.use_tcp()
 
     def adjust(self, axis, direction):
         target = self.target_values()
@@ -656,6 +670,8 @@ def main():
                     if not console.load_button.instate(["disabled"]):
                         raise RuntimeError("Loading must remain disabled until a position is saved")
                 if session.preview.tabletop_mount:
+                    for variable, value in zip(console.coordinates, [40, -25, -30]):
+                        variable.set(str(value))
                     pixel = console.cameras[console.frame_index].project(np.array([0.43, -0.24, 0.0]), console.frame)
                     console.canvas.event_generate("<Button-1>", x=pixel[0], y=pixel[1])
                     if abs(float(console.coordinates[2].get()) + 30.0) > 1e-6 or session.plan is None:
