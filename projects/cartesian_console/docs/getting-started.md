@@ -61,12 +61,18 @@ live twin, motion planner and interface together. Closing the window releases
 the process and its compute slot.
 
 1. Select an arm.
-2. Drag its TCP's red X, green Y or blue Z arrow. Release to preview the trajectory.
-3. Choose **Execute action**. The view follows measured feedback during motion
-   and displays the synchronized robot state at completion. Drag again to repeat.
+2. Drag its TCP's red X, green Y or blue Z arrow. Release to preview the target pose.
+3. Choose **Execute action**. The preview holds the target during motion and
+   automatically synchronizes its pose, TCP arrows and coordinates from measured
+   feedback at completion. Drag again from that synchronized pose to repeat.
 4. **Esc** cancels target dragging; **Stop** cancels robot motion.
 5. Save a reached position under **Saved positions**; **Preview saved position**
    plans that target from current feedback. Choose **Execute action** to execute it.
+
+Use `bash projects/cartesian_console/scripts/run_sync.sh --show-plant` to open
+an additional MuJoCo window showing the independent demo robot. It receives
+joint commands only after **Execute action**. The console renders its own
+preview model and requires no camera.
 
 Coordinates are centimeters from the torso's top-center point. X is forward,
 Y is left and Z is up. For the right arm, (40, -25, -30) cm is a reachable

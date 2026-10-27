@@ -39,7 +39,7 @@ class SyncConsole:
         self.frame_index = 0
         self.resize_pending = None
         self.tick_callback = None
-        self.preview_started = None
+        self.updating_coordinates = False
         self.drag = None
         self.drag_target = None
         self.drag_changed = False
@@ -62,18 +62,17 @@ class SyncConsole:
         self.coordinates = [tk.StringVar(value=f"{value:.2f}") for value in initial_target_cm]
         self.name = tk.StringVar(value="target_1")
         self.message = tk.StringVar(value="Robot state synchronized. Drag a TCP axis to preview, then choose Execute action.")
-        self.display_mode = tk.StringVar(value="Live")
-        self.view_label = tk.StringVar(value="LIVE ROBOT")
+        self.view_label = tk.StringVar(value="SIM PREVIEW | SYNCHRONIZED")
         self.connection = tk.StringVar()
         self.feedback_text = tk.StringVar()
         self.detail_text = tk.StringVar()
         self._style()
         self._layout()
         self.cameras = [OverheadCamera(sim.model, self.width, self.height, sim.table_height)
-                        for sim in (session.twin, session.preview)]
+                        for sim in (session.preview,)]
         self.camera_defaults = [(sim.model.cam_pos[camera.camera_id].copy(), sim.camera_look_at.copy(),
                                  float(sim.model.cam_fovy[camera.camera_id]))
-                                for sim, camera in zip((session.twin, session.preview), self.cameras)]
+                                for sim, camera in zip((session.preview,), self.cameras)]
         self.view(True)
         self.arm.trace_add("write", self.select_arm)
         for variable in self.coordinates:
@@ -125,8 +124,7 @@ class SyncConsole:
             ttk.Label(fields, text=label).grid(row=row, column=0, sticky="w", pady=4)
             entry = ttk.Entry(fields, textvariable=variable, width=11, font=("DejaVu Sans", 12), state="readonly")
             entry.grid(row=row, column=1, sticky="e", padx=(10, 0), pady=4)
-        ttk.Label(side, text="Drag the red X, green Y or blue Z arrow.\nRelease to preview the trajectory.\nEsc cancels the current drag.", style="Muted.TLabel", wraplength=275).pack(anchor="w")
-        ttk.Button(side, text="Sync robot state", command=self.use_tcp).pack(fill="x", pady=(8, 12))
+        ttk.Label(side, text="Drag the red X, green Y or blue Z arrow.\nRelease to preview the target pose.\nExecute action moves the robot.\nFeedback sync is automatic.\nEsc cancels the current drag.", style="Muted.TLabel", wraplength=275).pack(anchor="w")
         ttk.Separator(side).pack(fill="x", pady=12)
         self.execute_button = ttk.Button(side, text="Execute action", command=self.execute, state="disabled")
         self.execute_button.pack(fill="x", pady=(0, 8))
@@ -150,10 +148,6 @@ class SyncConsole:
         toolbar = ttk.Frame(scene, padding=(6, 0, 6, 8))
         toolbar.pack(fill="x")
         ttk.Label(toolbar, textvariable=self.view_label, style="Step.TLabel").pack(side="left")
-        for mode in ("Live", "Preview"):
-            button = ttk.Radiobutton(toolbar, text=mode, variable=self.display_mode, value=mode)
-            button.pack(side="left", padx=6)
-            self.edit_controls.append(button)
         ttk.Button(toolbar, text="Overview", command=lambda: self.view(True)).pack(side="right", padx=4)
         ttk.Button(toolbar, text="Head view", command=lambda: self.view(False)).pack(side="right", padx=4)
         self.canvas = tk.Canvas(scene, width=self.width, height=self.height, highlightthickness=0, background="#233043")
@@ -176,20 +170,26 @@ class SyncConsole:
         self.feedback_log.flush()
 
     def invalidate(self, *_):
+        if self.updating_coordinates:
+            return
         self.session.plan = None
-        self.preview_started = None
         self.execute_button.configure(state="disabled")
         self.save_button.configure(state="disabled")
 
     def use_tcp(self):
         if self.session.worker.state == "executing" or self.drag is not None:
             return
+        self.invalidate()
         self.session.sync()
-        self.display_mode.set("Live")
+        self.update_measured_coordinates()
+        self.message.set("Robot feedback synchronized. Drag a TCP axis to preview an action.")
+
+    def update_measured_coordinates(self):
         position_cm = self.session.reference.from_world(self.session.twin.tcp_position(self.arm.get()))
+        self.updating_coordinates = True
         for variable, value in zip(self.coordinates, position_cm):
             variable.set(f"{value:.2f}")
-        self.message.set("Robot feedback synchronized. Drag a TCP axis to preview an action.")
+        self.updating_coordinates = False
 
     def select_arm(self, *_):
         self.cancel_drag()
@@ -221,7 +221,6 @@ class SyncConsole:
         self.root.update_idletasks()
         result = self.session.prepare_relative(self.arm.get(), target)
         if result is None:
-            self.display_mode.set("Live")
             self.save_button.configure(state="disabled")
             reason = self.session.rejection_reason
             self.detail_text.set(reason)
@@ -243,8 +242,8 @@ class SyncConsole:
         })
         self.save_button.configure(state="disabled")
         self.detail_text.set(f"{result.trajectory.source.upper()} | {result.trajectory.duration:.1f} seconds\nStart: current robot feedback")
-        self.preview_started = time.monotonic()
-        self.display_mode.set("Preview")
+        self.session.show_preview(result.trajectory.duration)
+        self.frame = None
         self.execute_button.configure(state="normal")
         self.message.set("Preview ready. The robot holds position. Choose Execute action to move.")
         return result
@@ -254,25 +253,22 @@ class SyncConsole:
             self.message.set("Release the mouse before moving.")
             return
         self.session.execute()
-        self.preview_started = None
-        self.display_mode.set("Live")
         self.execute_button.configure(state="disabled")
         self.action("execution_started", arm=self.session.plan.trajectory.arm,
                     start_positions_rad={arm: value.tolist() for arm, value in self.session.plan.start.positions.items()})
         self.save_button.configure(state="disabled")
-        self.message.set("Moving to the target. Live view follows robot feedback.")
+        self.message.set("Executing action. The preview will synchronize automatically from robot feedback.")
 
     def cancel(self):
         self.cancel_drag()
         moving = self.session.worker.state == "executing"
         self.session.worker.cancel()
         self.invalidate()
-        self.display_mode.set("Live")
         self.message.set("Stopping motion..." if moving else "Ready. Drag a TCP axis to preview.")
 
     def view(self, overview):
         self.cancel_drag()
-        for index, sim in enumerate((self.session.twin, self.session.preview)):
+        for index, sim in enumerate((self.session.preview,)):
             look_height = 0.25 if sim.tabletop_mount else 0.48
             values = (np.array([1.55, 1.15, 1.25]), np.array([0.25, 0, look_height]), 48) if overview else self.camera_defaults[index]
             sim.set_camera(*values)
@@ -291,12 +287,12 @@ class SyncConsole:
         self.cancel_drag()
         for camera in self.cameras:
             camera.close()
-        for sim in (self.session.twin, self.session.preview):
+        for sim in (self.session.preview,):
             sim.model.vis.global_.offwidth = max(1920, width)
             sim.model.vis.global_.offheight = max(1080, height)
         self.width, self.height = width, height
         self.cameras = [OverheadCamera(sim.model, width, height, sim.table_height)
-                        for sim in (self.session.twin, self.session.preview)]
+                        for sim in (self.session.preview,)]
         self.frame = None
 
     def pointer_hover(self, event):
@@ -315,6 +311,7 @@ class SyncConsole:
                 return
             self.message.set("Drag one of the colored X, Y or Z arrows.")
             return
+        self.canvas.focus_set()
         camera = self.cameras[self.frame_index]
         drag = AxisDrag.begin(camera, self.frame, self.gizmo_world, self.session.reference.rotation[:, axis], axis,
                               (event.x, event.y))
@@ -323,7 +320,6 @@ class SyncConsole:
             return
         self.drag_values = [value.get() for value in self.coordinates]
         self.drag_plan = self.session.plan
-        self.drag_preview_started = self.preview_started
         self.drag_pose = self.session.preview.data.qpos.copy()
         self.drag_start_pixel = np.array([event.x, event.y])
         self.drag = drag
@@ -375,7 +371,6 @@ class SyncConsole:
         for variable, value in zip(self.coordinates, self.drag_values):
             variable.set(value)
         self.session.plan = self.drag_plan
-        self.preview_started = self.drag_preview_started
         self.update_execute_button()
         completed = self.session.plan is not None and self.session.worker.completed_plan is self.session.plan
         self.save_button.configure(state="normal" if completed else "disabled")
@@ -440,8 +435,6 @@ class SyncConsole:
             return
         if self.drag is not None:
             anchor = self.drag_target
-        elif self.frame_index == 1 and self.session.plan is not None:
-            anchor = self.session.plan.target
         else:
             anchor = sim.tcp_position(self.arm.get())
         origin = self.visible_pixel(camera, anchor)
@@ -503,23 +496,22 @@ class SyncConsole:
         feedback = self.session.sync()
         execution_finished = self.session.worker.report is not None and self.session.worker.report is not self.last_report
         moving = self.session.worker.state == "executing"
-        if moving or (execution_finished and self.session.worker.completed_plan is self.session.plan):
-            self.preview_started = None
-            self.display_mode.set("Live")
         if self.drag is not None:
             self.session.preview.data.qpos[:] = self.drag_pose
             mujoco.mj_forward(self.session.preview.model, self.session.preview.data)
-        elif self.preview_started is not None and self.session.plan is not None:
-            self.session.show_preview(min(time.monotonic() - self.preview_started, self.session.plan.trajectory.duration))
-        self.frame_index = 0 if self.display_mode.get() == "Live" else 1
-        sim = (self.session.twin, self.session.preview)[self.frame_index]
+        elif self.session.plan is not None and self.session.worker.completed_plan is not self.session.plan and self.session.worker.state != "cancelled":
+            self.session.show_preview(self.session.plan.trajectory.duration)
+        self.frame_index = 0
+        sim = self.session.preview
         camera = self.cameras[self.frame_index]
         self.frame = camera.capture(sim.data)
         self.photo = ImageTk.PhotoImage(Image.fromarray(self.frame.rgb))
         self.canvas.itemconfigure(self.image_item, image=self.photo)
         self._overlay(camera, sim)
         self.draw_gizmo(camera, sim)
-        self.view_label.set("LIVE ROBOT" if self.frame_index == 0 else "PREVIEW - ROBOT HOLDS")
+        pending = self.session.plan is not None and self.session.worker.completed_plan is not self.session.plan
+        status = "EXECUTING" if moving else ("TARGET POSE" if pending else "SYNCHRONIZED")
+        self.view_label.set(f"SIM PREVIEW | {status}")
         moving = self.session.worker.state == "executing"
         self.update_execute_button()
         for widget in self.edit_controls:
@@ -537,6 +529,7 @@ class SyncConsole:
                     positions_rad={name: value.tolist() for name, value in feedback.positions.items()})
         if execution_finished:
             self.last_report = self.session.worker.report
+            self.update_measured_coordinates()
             write_json(self.session_directory / f"execution_{time.time_ns()}.json", self.last_report)
             completed_current = self.session.worker.completed_plan is self.session.plan
             self.save_button.configure(state="normal" if completed_current else "disabled")
@@ -544,7 +537,7 @@ class SyncConsole:
                 self.action("execution_completed", positions_rad={arm: value.tolist() for arm, value in feedback.positions.items()})
                 self.message.set("Execution complete. Robot feedback synchronized. Drag a TCP axis to preview the next action.")
         if self.session.worker.state == "cancelled" and self.last_state != "cancelled":
-            self.display_mode.set("Live")
+            self.update_measured_coordinates()
             self.message.set("Motion stopped. Robot feedback synchronized. Drag a TCP axis to preview.")
         self.last_state = self.session.worker.state
         self.tick_callback = self.root.after(60, self.tick)
@@ -588,9 +581,12 @@ def main():
     parser.add_argument("--drum-asset", type=Path)
     parser.add_argument("--targets", type=Path, default=RUNS / "sync/targets.json")
     parser.add_argument("--speed", type=float, default=0.2)
+    parser.add_argument("--show-plant", action="store_true", help="Open a separate MuJoCo window for the demo robot receiving joint commands")
     parser.add_argument("--record", type=Path, help="Record an independent MuJoCo demo without opening Tk")
     parser.add_argument("--smoke-test", action="store_true", help="Exercise TCP preview, explicit execution and feedback synchronization")
     args = parser.parse_args()
+    if args.show_plant and (args.backend != "demo" or args.record):
+        raise ValueError("--show-plant requires the interactive MuJoCo demo backend")
     if args.backend == "can":
         if args.record or args.smoke_test:
             raise ValueError("Automatic demonstration is available only with the MuJoCo backend")
@@ -602,7 +598,7 @@ def main():
 
         record(args.record, args.planner, args.drum_asset)
         return
-    worker = RobotWorker(args.backend, args.hardware_config, args.drum_asset)
+    worker = RobotWorker(args.backend, args.hardware_config, args.drum_asset, show_plant=args.show_plant)
     session = None
     try:
         if not worker.ready.wait(10):
@@ -640,6 +636,8 @@ def main():
                     console.load()
                     if not console.load_button.instate(["disabled"]):
                         raise RuntimeError("Loading must remain disabled until a position is saved")
+                if console.frame.rgb.shape[:2] != (console.height, console.width):
+                    raise RuntimeError("The displayed frame must use the native viewport resolution")
                 tip = console.gizmo_handles[2][1].astype(int)
                 console.canvas.event_generate("<ButtonPress-1>", x=int(tip[0]), y=int(tip[1]))
                 if console.drag is None or console.drag.index != 2:
@@ -649,8 +647,6 @@ def main():
                 console.canvas.event_generate("<ButtonRelease-1>", x=pixel[0], y=pixel[1])
                 if session.plan is None or worker.state != "connected":
                     raise RuntimeError("Releasing the TCP drag must create a preview while the robot holds")
-                if console.frame.rgb.shape[:2] != (console.height, console.width):
-                    raise RuntimeError("The displayed frame must use the native viewport resolution")
                 console.execute_button.invoke()
                 console.root.after(100, exercise)
 

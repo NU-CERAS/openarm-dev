@@ -57,25 +57,27 @@ hardware adapter. It does not establish physical robot performance.
 
 1. Select **Right arm** or **Left arm**. Drag a TCP arrow: red **X**, green **Y**
    or blue **Z**. Only that coordinate changes, measured in centimeters from
-   the torso top origin. Release the mouse to preview the planned trajectory.
+   the torso top origin. Release the mouse to preview the planned target pose.
    **Esc** cancels a drag and restores the previous coordinates.
-   The robot holds its position throughout target editing and preview playback.
-2. In **Live**, the arrows start at the measured TCP. In **Preview**, the arrows
-   edit the planned target. Every new plan starts from measured feedback.
+   The robot holds its position throughout target editing and preview.
+2. The single **SIM PREVIEW** viewport initially shows the measured robot pose.
+   Its arrows edit the displayed TCP target. Every new trajectory starts from
+   current measured joints; editing a pending target keeps the displayed preview
+   at its planned pose.
    Arrow tips and shafts are
    draggable. Choose **Overview** if an axis points toward the viewing direction.
    Changing the view or resizing cancels an active drag.
-3. After release, **Preview** plays the collision-checked trajectory and holds
-   its final pose. The orange marker identifies the target. Select **Live** to
-   inspect the measured robot. An unreachable or opposite-side target displays
+3. After release, the preview displays the collision-checked trajectory's final
+   pose. The orange marker identifies the target. An unreachable or opposite-side target displays
    guidance and disables execution.
-4. Choose **Execute action** to send the planned joint commands. The viewport
-   switches to **Live**, follows measured robot feedback and synchronizes both
-   simulation models after execution. **Stop** cancels active movement.
+4. Choose **Execute action** to send the planned joint commands. The preview
+   retains the target pose during execution. At completion, the console
+   automatically reads feedback and updates the preview, TCP arrows and coordinate
+   fields to the measured state. **Stop** cancels active movement and synchronizes
+   the preview from feedback.
 5. Observe the physical arm directly, then drag another target when the current
    motion completes. The read-only XYZ fields display the coordinate sent to the
-   planner. **Sync robot state** refreshes the current pose and coordinates from
-   feedback and clears the pending preview.
+   planner, then automatically update to the measured TCP after execution.
 6. After reaching the target, enter a name under **Saved positions** and choose
    **Save this position**. The file stores the sim target, planned final joints,
    measured joints, model-derived TCP, execution state and backend. The file
@@ -87,19 +89,33 @@ hardware adapter. It does not establish physical robot performance.
    reject the trajectory.
 
 Every new plan reads fresh feedback from both arms and starts at the measured
-joint positions. During execution, both simulation models follow the robot's
-feedback. Completion publishes a final measured state. The next drag and reach
+joint positions. During execution, the internal feedback model follows the
+robot while the preview retains its target. Completion publishes a final
+measured state and automatically synchronizes the preview. The next drag and reach
 begin from this measured state. The same
 planning and synchronization path is used for native MuJoCo and physical CAN.
 An inconsistent trajectory start is rejected before execution. **Execute action**
 is the movement trigger in both simulation and physical CAN modes. Startup,
-dragging, preview playback and loading saved targets send no movement commands.
+dragging, preview and loading saved targets send no movement commands.
 
 The XYZ coordinate values remain the input to the existing planning interface.
-The **Live** viewport follows robot feedback; **Preview** displays the planned
-trajectory independently of the controlled robot.
+The viewport displays a simulation model driven by target previews and joint
+feedback. It requires no physical camera.
 Drag handles are disabled during robot execution. Session logs record the chosen
 axis, drag origin, final coordinates and cancellations.
+
+For testing, open a separate window for the independent MuJoCo demo robot:
+
+```bash
+bash projects/cartesian_console/scripts/run_sync.sh --show-plant
+```
+
+The additional MuJoCo session runs in a separate process with the controlled
+robot's own model, physics state and actuators. Joint commands and feedback use
+an interprocess connection. The console has a separate preview model. Editing a target changes
+the preview; **Execute action** submits joint commands to the demo robot, whose
+feedback automatically updates the preview after completion. This option is
+available with the demo backend.
 
 The viewport renders at its native pixel dimensions, initially up to 1280 x 760.
 Resizing rebuilds the renderers for the available area, up to 1920 x 1080, without

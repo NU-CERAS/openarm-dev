@@ -1,6 +1,7 @@
 from contextlib import ExitStack
 from dataclasses import dataclass
 import json
+import multiprocessing
 from pathlib import Path
 import queue
 import threading
@@ -80,12 +81,19 @@ def check_start(plan: Preview, feedback: Feedback, tolerance=0.03):
 
 
 class MujocoPlant:
-    def __init__(self, scene=None, realtime=True):
+    def __init__(self, scene=None, realtime=True, show_viewer=False):
         self.sim = ReachSimulation(drum_asset=scene, worktable=scene is None, tabletop_mount=scene is None)
         self.sim.reset_zero()
         self.realtime = realtime
+        self.viewer = None
+        if show_viewer:
+            from .plant_window import MujocoPlantWindow
+
+            self.viewer = MujocoPlantWindow(self.sim)
 
     def read(self):
+        if self.viewer is not None:
+            self.viewer.sync()
         return Feedback({arm: self.sim.data.qpos[self.sim.qpos_ids[arm]].copy() for arm in ARMS},
                         {arm: self.sim.data.qvel[self.sim.model.jnt_dofadr[self.sim.joint_ids[arm]]].copy() for arm in ARMS},
                         time.monotonic())
@@ -123,7 +131,97 @@ class MujocoPlant:
         return {"max_tracking_error_rad": worst_error, "final_joint_error_rad": final_error}
 
     def close(self):
+        if self.viewer is not None:
+            self.viewer.close()
         self.sim.close()
+
+
+def run_mujoco_plant(connection, cancel, scene, realtime):
+    plant = MujocoPlant(scene, realtime, show_viewer=True)
+    try:
+        connection.send(("result", None))
+        while True:
+            operation, payload = connection.recv()
+            if operation == "close":
+                break
+            if operation == "execute":
+                try:
+                    result = plant.execute(payload, cancel, lambda feedback: connection.send(("feedback", feedback)))
+                except MotionCancelled:
+                    connection.send(("cancelled", None))
+                    continue
+            elif operation == "read":
+                result = plant.read()
+            elif operation == "idle":
+                result = plant.idle()
+            else:
+                raise ValueError(f"Unknown MuJoCo plant operation: {operation}")
+            connection.send(("result", result))
+    finally:
+        plant.close()
+        connection.close()
+
+
+class MujocoProcessPlant:
+    def __init__(self, scene=None, realtime=True):
+        context = multiprocessing.get_context("spawn")
+        self.connection, child = context.Pipe()
+        self.cancel_event = context.Event()
+        self.process = context.Process(target=run_mujoco_plant, args=(child, self.cancel_event, scene, realtime),
+                                       name="openarm-mujoco-robot")
+        self.process.start()
+        child.close()
+        with ExitStack() as cleanup:
+            cleanup.callback(self.close)
+            self.receive()
+            cleanup.pop_all()
+
+    def receive(self, cancel=None, publish=None):
+        deadline = time.monotonic() + 15
+        while True:
+            if cancel is not None and cancel.is_set():
+                self.cancel_event.set()
+            if not self.connection.poll(0.02):
+                if not self.process.is_alive():
+                    raise RuntimeError(f"MuJoCo robot process exited with code {self.process.exitcode}")
+                if time.monotonic() > deadline:
+                    raise TimeoutError("MuJoCo robot process stopped responding")
+                continue
+            kind, result = self.connection.recv()
+            if kind == "feedback":
+                publish(result)
+                deadline = time.monotonic() + 15
+            elif kind == "cancelled":
+                raise MotionCancelled()
+            elif kind == "result":
+                return result
+            else:
+                raise ValueError(f"Unknown MuJoCo robot response: {kind}")
+
+    def read(self):
+        self.connection.send(("read", None))
+        return self.receive()
+
+    def idle(self):
+        self.connection.send(("idle", None))
+        return self.receive()
+
+    def execute(self, plan, cancel, publish):
+        self.cancel_event.clear()
+        self.connection.send(("execute", plan))
+        return self.receive(cancel, publish)
+
+    def close(self):
+        if self.process.is_alive():
+            self.connection.send(("close", None))
+            self.process.join(timeout=3)
+            if self.process.is_alive():
+                self.process.terminate()
+                self.process.join(timeout=1)
+                raise TimeoutError("MuJoCo robot process did not close")
+        self.connection.close()
+        if self.process.exitcode != 0:
+            raise RuntimeError(f"MuJoCo robot process exited with code {self.process.exitcode}")
 
 
 def hardware_configuration(path: Path):
@@ -234,7 +332,9 @@ class CanPlant:
 
 
 class RobotWorker:
-    def __init__(self, backend="demo", configuration=None, scene=None, realtime=True):
+    def __init__(self, backend="demo", configuration=None, scene=None, realtime=True, show_plant=False):
+        if show_plant and backend != "demo":
+            raise ValueError("The independent MuJoCo plant viewer requires the demo backend")
         self.commands = queue.Queue(maxsize=1)
         self.cancel_event = threading.Event()
         self.stop_event = threading.Event()
@@ -249,6 +349,7 @@ class RobotWorker:
         self.configuration = configuration
         self.scene = scene
         self.realtime = realtime
+        self.show_plant = show_plant
         self.thread = threading.Thread(target=self._run, name="openarm-robot-transport", daemon=False)
         self.thread.start()
 
@@ -258,9 +359,20 @@ class RobotWorker:
             self.mutex.notify_all()
 
     def _run(self):
-        plant = None
         try:
-            plant = MujocoPlant(self.scene, self.realtime) if self.backend == "demo" else CanPlant(self.configuration)
+            self._serve()
+        except BaseException as error:
+            self.error = error
+            self.state = "failed"
+            self.ready.set()
+
+    def _serve(self):
+        with ExitStack() as resources:
+            if self.backend == "demo":
+                plant = MujocoProcessPlant(self.scene, self.realtime) if self.show_plant else MujocoPlant(self.scene, self.realtime)
+            else:
+                plant = CanPlant(self.configuration)
+            resources.callback(plant.close)
             self._publish(plant.read())
             self.state = "connected"
             self.ready.set()
@@ -282,13 +394,6 @@ class RobotWorker:
                 except MotionCancelled:
                     self._publish(plant.read())
                     self.state = "cancelled"
-        except BaseException as error:
-            self.error = error
-            self.state = "failed"
-            self.ready.set()
-        finally:
-            if plant is not None:
-                plant.close()
 
     def read(self):
         with self.mutex:
@@ -322,6 +427,8 @@ class RobotWorker:
         self.thread.join(timeout=5)
         if self.thread.is_alive():
             raise RuntimeError("Robot transport did not stop within five seconds")
+        if self.error is not None:
+            raise RuntimeError("Robot transport failed") from self.error
 
 
 class SyncSession:

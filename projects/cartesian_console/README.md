@@ -27,14 +27,24 @@ OPENARM_PYTHON="$(command -v python)" bash projects/cartesian_console/scripts/ru
 ```
 
 The English interface reads both arms at startup and displays their measured
-pose in a native-resolution viewport. Drag a TCP axis and release to preview
-its planned XYZ trajectory. Choose **Execute action** to move the robot.
-Execution reads feedback continuously and synchronizes the sim for the next action.
+pose in a single native-resolution sim preview. Drag a TCP axis and release to
+display the planned target pose. Choose **Execute action** to move the robot.
+The preview holds the target during execution, then automatically synchronizes
+its posture, TCP handles and coordinates from feedback for the next action.
 Coordinates are displayed in centimeters from the fixed torso top center.
 Save a reached position for reuse. The demo uses an independent
 MuJoCo robot as the controlled plant. Opening the interface starts no motion.
 The demo starts both arms at joint zero; physical startup reads the actual arm
 feedback. The coordinate fields start at the measured TCP from the torso top.
+
+For testing with a separate window showing the independently simulated robot:
+
+```bash
+bash projects/cartesian_console/scripts/run_sync.sh --show-plant
+```
+
+That MuJoCo window displays the controlled robot receiving joint commands.
+Dragging in the console leaves it stationary until **Execute action** is selected.
 
 For physical hardware, fill `configs/sync_hardware.example.json` using the
 [connection and operating guide](docs/sync-console.md). The current adapter uses

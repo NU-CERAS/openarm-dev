@@ -70,6 +70,7 @@ def test_gui_preview_execute_sync_cycle_uses_measured_pose(release_axis):
             end = console.drag.camera.project(console.drag.origin + console.drag.axis * (0.10 + centimeters / 100), console.drag.frame)
             console.canvas.event_generate("<B1-Motion>", x=end[0], y=end[1])
             assert console.drag_changed
+            expected_target = console.drag.target(end)
             assert session.plan is None
             assert worker.state != "executing"
             if cancel:
@@ -83,27 +84,42 @@ def test_gui_preview_execute_sync_cycle_uses_measured_pose(release_axis):
                 assert console.drag is None
                 assert session.plan is not None, session.rejection_reason
                 assert worker.state != "executing"
-                pump(console, lambda: console.view_label.get() == "PREVIEW - ROBOT HOLDS")
-                session.show_preview(session.plan.trajectory.duration)
+                pump(console, lambda: console.view_label.get() == "SIM PREVIEW | TARGET POSE")
                 assert np.linalg.norm(session.preview.tcp_position("right") - session.plan.target) < 0.015
+                endpoint = session.plan.trajectory.positions[-1]
+                for _ in range(3):
+                    console.root.update()
+                    np.testing.assert_allclose(session.preview.data.qpos[session.preview.qpos_ids["right"]], endpoint, atol=1e-12)
+                    time.sleep(0.07)
                 np.testing.assert_allclose(session.sync().positions["right"], measured_before, atol=0.002)
                 assert not console.execute_button.instate(["disabled"])
+                np.testing.assert_allclose(session.plan.target, expected_target, atol=0.000051)
         for axis in (0, 1, 2):
             drag_axis(axis, 2, cancel=True)
             np.testing.assert_allclose(session.sync().positions["right"], original, atol=0.002)
         drag_axis(release_axis, 2)
-        target = session.plan.target.copy()
         first_plan = session.plan
         drag_axis(0, 5, cancel=True)
         assert session.plan is first_plan
         assert not console.execute_button.instate(["disabled"])
         np.testing.assert_allclose(session.sync().positions["right"], original, atol=0.002)
+        shown_tcp = session.preview.tcp_position("right").copy()
+        drag_axis(2, 2)
+        np.testing.assert_allclose(session.plan.trajectory.positions[0], original, atol=0.002)
+        np.testing.assert_allclose(session.plan.target[:2], shown_tcp[:2], atol=0.001)
+        assert session.plan.target[2] > shown_tcp[2] + 0.01
+        target = session.plan.target.copy()
+        first_plan = session.plan
         console.execute_button.invoke()
         pump(console, lambda: worker.completed_plan is first_plan and console.last_report is worker.report)
+        np.testing.assert_allclose(console.gizmo_world, session.preview.tcp_position("right"), atol=1e-12)
         session.sync()
         assert np.linalg.norm(session.twin.tcp_position("right") - target) < 0.015
-        assert console.view_label.get() == "LIVE ROBOT"
+        assert console.view_label.get() == "SIM PREVIEW | SYNCHRONIZED"
         previous = session.sync().positions["right"].copy()
+        np.testing.assert_allclose(session.preview.data.qpos[session.preview.qpos_ids["right"]], previous, atol=1e-12)
+        np.testing.assert_allclose([float(v.get()) for v in console.coordinates],
+                                   session.reference.from_world(session.preview.tcp_position("right")), atol=0.006)
         drag_axis(0, 5, cancel=True)
         np.testing.assert_allclose(session.sync().positions["right"], previous, atol=0.002)
         assert session.plan is first_plan
@@ -114,7 +130,7 @@ def test_gui_preview_execute_sync_cycle_uses_measured_pose(release_axis):
         assert np.linalg.norm(following_plan.trajectory.positions[0]) > 0.02
         console.execute_button.invoke()
         pump(console, lambda: worker.completed_plan is following_plan and console.last_report is worker.report)
-        assert console.view_label.get() == "LIVE ROBOT"
+        assert console.view_label.get() == "SIM PREVIEW | SYNCHRONIZED"
         measured = session.sync()
         np.testing.assert_allclose(session.preview.data.qpos[session.preview.qpos_ids["right"]], measured.positions["right"], atol=1e-12)
         assert np.linalg.norm(session.twin.tcp_position("right") - following_plan.target) < 0.015
@@ -125,12 +141,13 @@ def test_gui_preview_execute_sync_cycle_uses_measured_pose(release_axis):
         assert worker.state != "executing"
         np.testing.assert_allclose(session.sync().positions["right"], before_load, atol=0.002)
         assert not console.execute_button.instate(["disabled"])
-        console.use_tcp()
-        assert session.plan is None
-        assert console.display_mode.get() == "Live"
+        loaded_plan = session.plan
+        console.execute_button.invoke()
+        pump(console, lambda: worker.completed_plan is loaded_plan and console.last_report is worker.report)
+        assert console.view_label.get() == "SIM PREVIEW | SYNCHRONIZED"
         assert console.execute_button.instate(["disabled"])
-        session.sync()
-        np.testing.assert_allclose(session.preview.data.qpos[session.preview.qpos_ids["right"]], before_load, atol=0.002)
+        final = session.sync().positions["right"]
+        np.testing.assert_allclose(session.preview.data.qpos[session.preview.qpos_ids["right"]], final, atol=1e-12)
     finally:
         if console is not None and not console.closed:
             console.close()
