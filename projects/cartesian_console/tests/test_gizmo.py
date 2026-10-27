@@ -84,6 +84,24 @@ def test_gui_axis_drag_preview_cancel_and_physical_execution(release_axis):
         pump(console, lambda: worker.state == "completed")
         session.sync()
         assert np.linalg.norm(session.twin.tcp_position("right") - target) < 0.015
+        pump(console, lambda: console.last_report is worker.report and console.preview_started is None)
+        assert console.display_mode.get() == "Live"
+        previous = session.sync().positions["right"].copy()
+        following_target = session.reference.from_world(session.twin.tcp_position("right")) + [1, 0, 2]
+        for variable, value in zip(console.coordinates, following_target):
+            variable.set(str(value))
+        console.preview_button.invoke()
+        assert session.plan is not None, session.rejection_reason
+        following_plan = session.plan
+        np.testing.assert_allclose(following_plan.trajectory.positions[0], previous, atol=0.002)
+        assert np.linalg.norm(following_plan.trajectory.positions[0]) > 0.02
+        console.execute_button.invoke()
+        pump(console, lambda: worker.completed_plan is following_plan and console.last_report is worker.report)
+        assert console.preview_started is None
+        assert console.display_mode.get() == "Live"
+        measured = session.sync()
+        np.testing.assert_allclose(session.preview.data.qpos[session.preview.qpos_ids["right"]], measured.positions["right"], atol=1e-12)
+        assert np.linalg.norm(session.twin.tcp_position("right") - following_plan.target) < 0.015
     finally:
         if console is not None and not console.closed:
             console.close()

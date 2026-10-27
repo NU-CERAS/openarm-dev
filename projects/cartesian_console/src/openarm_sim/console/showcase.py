@@ -167,7 +167,7 @@ def record_gui(output, planner, display):
         if [v.get() for v in console.coordinates] != previous:
             raise RuntimeError("Escape did not restore the original target")
         np.testing.assert_allclose(session.sync().positions["right"], initial, atol=0.002)
-        recording.mark("05  Move robot - live feedback follows actual joint motion")
+        recording.mark("05  Execute motion - live feedback follows actual joint motion")
         right = recording.execute()
         console.name.set("right_demo")
         console.save_button.invoke()

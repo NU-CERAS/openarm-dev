@@ -1,4 +1,5 @@
 import json
+import importlib.util
 import multiprocessing
 import os
 import time
@@ -9,7 +10,8 @@ import mujoco
 
 from openarm_sim.paths import BODY_REFERENCE, PROJECT_ROOT, RUNS
 from openarm_sim.simulation import ReachSimulation
-from openarm_sim.console.session import RobotWorker, SyncSession, check_start, hardware_configuration
+from openarm_sim.console.session import Preview, RobotWorker, SyncSession, check_start, hardware_configuration
+from openarm_sim.execution import JointTrajectory
 from openarm_tools.recording.storage import lock
 
 
@@ -173,6 +175,44 @@ def test_default_torso_relative_coordinates_reach_through_actual_physics(arm, y)
         session.sync()
         np.testing.assert_allclose(session.reference.from_world(session.twin.tcp_position(arm)),
                                    [40, y, -30], atol=1.0)
+    finally:
+        if session is not None:
+            session.close()
+        else:
+            worker.close()
+
+
+@pytest.mark.parametrize("planner", ["ompl", "mink", pytest.param("curobo", marks=pytest.mark.skipif(
+    importlib.util.find_spec("curobo") is None or not (RUNS / "planning/openarm.yml").exists(),
+    reason="Requires cuRobo and exported robot assets"))])
+def test_successive_reaches_start_from_completed_feedback_and_sync_both_models(planner):
+    worker = RobotWorker(realtime=False)
+    session = None
+    previous = None
+    try:
+        assert worker.ready.wait(10)
+        session = SyncSession(worker, planner=planner)
+        for target in ([40, -25, -30], [43, -25, -27], [38, -28, -25]):
+            plan = session.prepare_relative("right", target)
+            assert plan is not None, session.rejection_reason
+            np.testing.assert_allclose(plan.trajectory.positions[0], plan.start.positions["right"], atol=1e-5)
+            if previous is not None:
+                assert np.linalg.norm(plan.trajectory.positions[0]) > 0.2
+                np.testing.assert_allclose(plan.start.positions["right"], previous, atol=0.002)
+                wrong_trajectory = JointTrajectory("right", [0, 2], [np.zeros(7), plan.trajectory.positions[-1]],
+                                                   np.zeros((2, 7)), planner)
+                with pytest.raises(RuntimeError, match="measured planning state"):
+                    check_start(Preview(wrong_trajectory, plan.target, plan.start), worker.read())
+            session.execute()
+            wait_for(worker, "completed")
+            measured = session.sync()
+            np.testing.assert_allclose(worker.report["final_joint_positions_rad"]["right"], measured.positions["right"], atol=0.002)
+            for sim in (session.twin, session.preview):
+                for arm in ("right", "left"):
+                    np.testing.assert_allclose(sim.data.qpos[sim.qpos_ids[arm]], measured.positions[arm], atol=1e-12)
+                    np.testing.assert_allclose(sim._desired[sim.actuator_ids[arm]], measured.positions[arm], atol=1e-12)
+            np.testing.assert_allclose(session.reference.from_world(session.twin.tcp_position("right")), target, atol=1.0)
+            previous = measured.positions["right"].copy()
     finally:
         if session is not None:
             session.close()

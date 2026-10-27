@@ -62,7 +62,7 @@ the process and its compute slot.
 
 1. Select an arm.
 2. Drag its TCP's red X, green Y or blue Z arrow. Release to preview.
-3. Inspect the preview, then choose **Move robot**.
+3. Inspect the preview, then choose **Execute motion**.
 4. **Esc** cancels target dragging; **Stop** cancels robot motion.
 5. Save a reached position under **Saved positions**, then load it to replan.
 

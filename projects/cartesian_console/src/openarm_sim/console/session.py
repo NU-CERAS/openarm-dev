@@ -64,12 +64,16 @@ def apply_feedback(sim: ReachSimulation, feedback: Feedback):
             raise ValueError("Feedback requires seven finite positions and velocities per arm")
         sim.data.qpos[sim.qpos_ids[arm]] = positions
         sim.data.qvel[sim.model.jnt_dofadr[sim.joint_ids[arm]]] = velocities
+        sim._desired[sim.actuator_ids[arm]] = positions
+        sim.data.ctrl[sim.actuator_ids[arm]] = positions
     mujoco.mj_forward(sim.model, sim.data)
 
 
 def check_start(plan: Preview, feedback: Feedback, tolerance=0.03):
     if time.monotonic() - feedback.received_at > 0.25:
         raise RuntimeError("Robot feedback is stale")
+    if np.max(np.abs(plan.trajectory.positions[0] - plan.start.positions[plan.trajectory.arm])) > 0.001:
+        raise RuntimeError("Trajectory start differs from the measured planning state")
     for arm in ARMS:
         if np.max(np.abs(feedback.positions[arm] - plan.start.positions[arm])) > tolerance:
             raise RuntimeError("Robot moved after preview; create a new preview")
@@ -267,9 +271,14 @@ class RobotWorker:
                     self._publish(plant.idle())
                     continue
                 try:
-                    self.report = plant.execute(plan, self.cancel_event, self._publish)
+                    report = plant.execute(plan, self.cancel_event, self._publish)
+                    final = plant.read()
+                    self._publish(final)
+                    report["final_joint_positions_rad"] = {arm: values.tolist() for arm, values in final.positions.items()}
+                    report["final_feedback_received_at"] = final.received_at
                     self.completed_plan = plan
                     self.state = "completed"
+                    self.report = report
                 except MotionCancelled:
                     self._publish(plant.read())
                     self.state = "cancelled"
@@ -335,6 +344,9 @@ class SyncSession:
     def sync(self):
         feedback = self.worker.read()
         apply_feedback(self.twin, feedback)
+        if (self.plan is None or self.worker.state in ("executing", "cancelled")
+                or self.worker.completed_plan is self.plan):
+            apply_feedback(self.preview, feedback)
         return feedback
 
     def prepare(self, arm: str, target) -> Preview | None:

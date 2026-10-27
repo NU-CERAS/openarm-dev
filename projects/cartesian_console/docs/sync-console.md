@@ -66,8 +66,8 @@ hardware adapter. It does not establish physical robot performance.
    Changing the view or resizing cancels an active drag.
 3. Check **Preview** mode. The orange marker identifies the TCP target. Use
    **Live** to inspect measured robot posture. An unreachable or opposite-side
-   point displays guidance and leaves **Move robot** disabled.
-4. Select **Move robot**. The viewport switches to **Live** and the robot executes
+   point displays guidance and leaves **Execute motion** disabled.
+4. Select **Execute motion**. The viewport switches to **Live** and the robot executes
    the checked trajectory. **Stop** cancels motion. Connecting, selecting a target,
    loading a position and previewing start no physical movement.
 5. Observe the physical arm directly. Adjust the sim target and repeat until the
@@ -82,6 +82,14 @@ hardware adapter. It does not establish physical robot performance.
    current feedback. It becomes available after a matching position is saved.
    Execution checks both arms against the preview start; changes above 0.03 rad
    reject the trajectory.
+
+Every new plan reads fresh feedback from both arms and starts at the measured
+joint positions. During execution, both simulation models follow the robot's
+feedback. Completion publishes a final measured state, clears preview playback
+and selects Live. The next reach begins from this measured state. The same
+planning and synchronization path is used for native MuJoCo and physical CAN.
+An inconsistent trajectory start is rejected before execution. Preview animation
+holds the controlled robot at its actual pose until Execute motion is selected.
 
 Numeric X/Y/Z fields remain available for exact coordinate entry; choose
 **Preview reach** after editing. Table clicks select X/Y while retaining Z.

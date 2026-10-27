@@ -62,7 +62,7 @@ class SyncConsole:
         self.increment = tk.StringVar(value="1")
         self.name = tk.StringVar(value="target_1")
         self.display_mode = tk.StringVar(value="Live")
-        self.message = tk.StringVar(value="Drag a TCP axis, then release to preview. Choose Move robot when ready.")
+        self.message = tk.StringVar(value="Drag a TCP axis, then release to preview. Choose Execute motion when ready.")
         self.view_label = tk.StringVar(value="LIVE ROBOT")
         self.connection = tk.StringVar()
         self.feedback_text = tk.StringVar()
@@ -138,7 +138,7 @@ class SyncConsole:
         self.edit_controls.append(self.preview_button)
         ttk.Label(side, text="Preview never moves the robot.", style="Muted.TLabel").pack(anchor="w")
         ttk.Label(side, text="3  Move when ready", style="Step.TLabel").pack(anchor="w", pady=(14, 0))
-        self.execute_button = ttk.Button(side, text="Move robot", command=self.execute, style="Primary.TButton", state="disabled")
+        self.execute_button = ttk.Button(side, text="Execute motion", command=self.execute, style="Primary.TButton", state="disabled")
         self.execute_button.pack(fill="x", pady=8)
         ttk.Button(side, text="Stop", command=self.cancel, style="Stop.TButton").pack(fill="x")
         notebook = ttk.Notebook(side)
@@ -302,14 +302,17 @@ class SyncConsole:
         self.display_mode.set("Preview")
         self.execute_button.configure(state="normal")
         self.save_button.configure(state="disabled")
-        self.detail_text.set(f"{result.trajectory.source.upper()} | {result.trajectory.duration:.1f} seconds")
-        self.message.set("Preview ready. Check the motion, then choose Move robot.")
+        self.detail_text.set(f"{result.trajectory.source.upper()} | {result.trajectory.duration:.1f} seconds\nStart: current robot feedback")
+        self.message.set("Preview only: the robot holds its position. Choose Execute motion to move.")
 
     def execute(self):
         if self.drag is not None:
             self.message.set("Release the mouse and check the preview before moving.")
             return
         self.session.execute()
+        self.action("execution_started", arm=self.session.plan.trajectory.arm,
+                    start_positions_rad={arm: value.tolist() for arm, value in self.session.plan.start.positions.items()})
+        self.preview_started = None
         self.display_mode.set("Live")
         self.execute_button.configure(state="disabled")
         self.save_button.configure(state="disabled")
@@ -549,6 +552,12 @@ class SyncConsole:
             return
         check_resources()
         feedback = self.session.sync()
+        execution_finished = self.session.worker.report is not None and self.session.worker.report is not self.last_report
+        if self.session.worker.state == "executing":
+            self.display_mode.set("Live")
+        if execution_finished and self.session.worker.completed_plan is self.session.plan:
+            self.preview_started = None
+            self.display_mode.set("Live")
         if self.drag is not None:
             self.session.preview.data.qpos[:] = self.drag_pose
             mujoco.mj_forward(self.session.preview.model, self.session.preview.data)
@@ -564,7 +573,7 @@ class SyncConsole:
         self.canvas.itemconfigure(self.image_item, image=self.photo)
         self._overlay(camera, sim)
         self.draw_gizmo(camera, sim)
-        self.view_label.set("LIVE ROBOT" if self.frame_index == 0 else "MOTION PREVIEW")
+        self.view_label.set("LIVE ROBOT" if self.frame_index == 0 else "PREVIEW (robot holds position)")
         moving = self.session.worker.state == "executing"
         for widget in self.edit_controls:
             widget.state(["disabled"] if moving or self.drag is not None else ["!disabled"])
@@ -579,11 +588,14 @@ class SyncConsole:
         self.feedback_text.set(f"TCP from torso top (cm)\n{np.round(self.session.reference.from_world(tcp), 2).tolist()}\n\nJoints (rad)\n{np.round(feedback.positions[arm], 3).tolist()}")
         self.action("feedback", state=self.session.worker.state,
                     positions_rad={name: value.tolist() for name, value in feedback.positions.items()})
-        if self.session.worker.report is not None and self.session.worker.report is not self.last_report:
+        if execution_finished:
             self.last_report = self.session.worker.report
             write_json(self.session_directory / f"execution_{time.time_ns()}.json", self.last_report)
-            self.save_button.configure(state="normal")
-            self.message.set("Reached target. Save this position or click another target.")
+            completed_current = self.session.worker.completed_plan is self.session.plan
+            self.save_button.configure(state="normal" if completed_current else "disabled")
+            if completed_current:
+                self.action("execution_completed", positions_rad={arm: value.tolist() for arm, value in feedback.positions.items()})
+                self.message.set("Execution complete. The next reach starts from the measured robot pose.")
         if self.session.worker.state == "cancelled" and self.last_state != "cancelled":
             self.message.set("Motion stopped. Click a target to preview another reach.")
         self.last_state = self.session.worker.state
