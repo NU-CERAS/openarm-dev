@@ -12,3 +12,7 @@ __pycache__/
 .DS_Store
 # Optional fetched source; existing upstream repos remain submodules
 src/vendor/openarm_can/
+MUJOCO_LOG.TXT
+/.work/
+/.claude/logs/
+.pytest_cache/

@@ -1,7 +1,7 @@
 """Linux SocketCAN adapter for the pinned OpenArm CAN Python bindings."""
 import platform
 import time
-from openarm_tools.robot.config import finite, validate_positions
+from openarm_tools.robot.config import model_position, motor_position, validate_positions
 
 
 class Hardware:
@@ -30,6 +30,7 @@ class Hardware:
     def read(self):
         self.arm.refresh_all()
         self.arm.recv_all(10000)
+        self.motors = self.component.get_motors()
         if not self.arm.is_bus_healthy() or not self.arm.is_link_running():
             raise RuntimeError('CAN bus is unhealthy or has no carrier.')
         positions = []
@@ -40,7 +41,7 @@ class Hardware:
                 raise RuntimeError(f'{j["name"]}: {self.oa.motor_error_to_string(motor.get_error_code())}')
             if max(motor.get_state_tmos(), motor.get_state_trotor()) > self.cfg['max_temperature']:
                 raise RuntimeError(f'{j["name"]}: temperature exceeds configured limit.')
-            positions.append(finite(j['sign'] * motor.get_position()))
+            positions.append(model_position(j, motor.get_position()))
         return positions
 
     def status(self):
@@ -51,13 +52,15 @@ class Hardware:
                  'temperature_rotor': m.get_state_trotor()}
                 for j, m, p in zip(self.cfg['joints'], self.motors, positions)]
 
-    def move(self, points):
+    def move(self, points, *, on_feedback=None):
         if not self.cfg.get('hardware_reviewed', False):
             raise ValueError('Review the physical robot mapping, limits and gains in a custom config; set hardware_reviewed=true.')
         if any(m.is_enabled() for m in self.motors):
             raise RuntimeError('Motors are already enabled; stop the existing controller first.')
         previous = self.read()
         validate_positions(self.cfg, previous)
+        if on_feedback is not None:
+            on_feedback(previous)
         self.enabled = True  # Cleanup even if enabling only partially succeeds.
         try:
             self.arm.enable_all()
@@ -70,10 +73,12 @@ class Hardware:
                     raise RuntimeError('Control deadline missed.')
                 actual = self.read()
                 validate_positions(self.cfg, actual)
+                if on_feedback is not None:
+                    on_feedback(actual)
                 if max(abs(a - b) for a, b in zip(actual, previous)) > self.cfg['max_tracking_error']:
                     raise RuntimeError('Tracking error exceeded configured limit.')
                 self.component.mit_control_all([
-                    self.oa.MITParam(j['kp'], j['kd'], j['sign'] * value, 0, 0)
+                    self.oa.MITParam(j['kp'], j['kd'], motor_position(j, value), 0, 0)
                     for j, value in zip(self.cfg['joints'], q)])
                 self.arm.recv_all(10000)
                 previous = q
@@ -81,10 +86,12 @@ class Hardware:
             for _ in range(50):
                 actual = self.read()
                 validate_positions(self.cfg, actual)
+                if on_feedback is not None:
+                    on_feedback(actual)
                 if max(abs(a - b) for a, b in zip(actual, previous)) > self.cfg['max_tracking_error']:
                     raise RuntimeError('Final tracking error exceeded configured limit.')
                 self.component.mit_control_all([
-                    self.oa.MITParam(j['kp'], j['kd'], j['sign'] * value, 0, 0)
+                    self.oa.MITParam(j['kp'], j['kd'], motor_position(j, value), 0, 0)
                     for j, value in zip(self.cfg['joints'], previous)])
                 time.sleep(0.01)
             print('Final measured joint positions:', self.read())

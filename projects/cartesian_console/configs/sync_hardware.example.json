@@ -1,0 +1,7 @@
+{
+  "schema": "openarm.sync_hardware.v1",
+  "arms": {
+    "left": {"interface": null, "config": null},
+    "right": {"interface": null, "config": null}
+  }
+}

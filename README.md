@@ -57,7 +57,7 @@ The equivalents in `scripts/` call the same shared implementation. Use `--help` 
 - `src/openarm_tools/`: shared configuration, backends, motion, calibration, recording.
 - `src/ros/`: ROS integration; `src/vendor/`: upstream sources.
 - `robots/`: explicitly versioned models, joint configuration, and reviewed poses.
-- `projects/`: README-only starting points for Cartesian control, controller tuning, model validation, and teleoperation.
+- `projects/`: independent clients of the shared tools. [Cartesian Console](projects/cartesian_console/README.md) contains camera reach, drumming simulation, and ACT/RL skill learning; other project directories contain starting points.
 - `examples/`: small executable tutorials; `mechanical/`: CAD/documentation.
 - `docs/`: architecture and operation; `tests/`: behavior checks.
 - `runs/`: local simulation snapshots, calibration and saved poses; ignored by Git.
