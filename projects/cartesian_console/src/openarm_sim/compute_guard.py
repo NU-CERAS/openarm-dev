@@ -17,6 +17,36 @@ from .paths import RUNS
 GIB = 1024**3
 
 
+def monitored_process(command, environment, memory):
+    process = subprocess.Popen(command, env=environment, start_new_session=True)
+    try:
+        while process.poll() is None:
+            check_resources()
+            total = 0
+            try:
+                parent = psutil.Process(process.pid)
+            except psutil.NoSuchProcess:
+                process.wait()
+                break
+            for member in [parent, *parent.children(recursive=True)]:
+                try:
+                    total += member.memory_info().rss
+                except psutil.NoSuchProcess:
+                    continue
+            if total > memory:
+                raise MemoryError("Compute process group exceeded its memory budget")
+            time.sleep(0.2)
+        return process.returncode
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+
+
 def check_resources():
     if psutil.virtual_memory().available < 8 * GIB:
         raise MemoryError("Stopping this compute task to preserve 8 GiB of available system memory")
@@ -65,11 +95,17 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX)
         check_resources()
         memory = min(14 * GIB, psutil.virtual_memory().available - 8 * GIB)
-        cores = min(8, max(1, len(os.sched_getaffinity(0)) // 2))
+        cores = min(8, max(1, (psutil.cpu_count() or 1) // 2))
         unit = f"openarm-compute-{uuid.uuid4().hex[:8]}"
         environment = dict(os.environ, OPENARM_COMPUTE_GUARDED="1", OMP_NUM_THREADS="1",
                            OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1", NUMEXPR_NUM_THREADS="1",
                            TMPDIR=str(cache))
+        if sys.platform == "darwin":
+            code = monitored_process(["nice", "-n", "10", *args.command], environment, memory)
+            if code:
+                raise subprocess.CalledProcessError(code, args.command)
+            return
+        cores = min(cores, max(1, len(os.sched_getaffinity(0)) // 2))
         command = ["systemd-run", "--user", "--scope", "--quiet", "--unit", unit,
                    "-p", f"MemoryMax={memory}", "-p", f"MemoryHigh={min(memory, 12 * GIB)}",
                    "-p", "MemorySwapMax=0", "-p", f"CPUQuota={cores * 100}%",

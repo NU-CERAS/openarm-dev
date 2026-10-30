@@ -40,7 +40,8 @@ Install the project from the repository root:
 
 ~~~bash
 bash projects/cartesian_console/scripts/setup.sh
-source runs/cartesian_console/env/bin/activate
+source /opt/ros/jazzy/setup.bash
+source .venv/bin/activate
 openarm-policy-replay runs/cartesian_console/policy_demo/policy_trace.jsonl \
   --mode absolute
 openarm-policy-replay runs/cartesian_console/policy_demo/policy_trace.jsonl \
@@ -73,7 +74,8 @@ Install the pinned CAN dependency and activate the environment:
 
 ~~~bash
 bash projects/cartesian_console/scripts/setup.sh --hardware
-source runs/cartesian_console/env/bin/activate
+source /opt/ros/jazzy/setup.bash
+source .venv/bin/activate
 ~~~
 
 Copy configs/policy_gripper.example.json under runs/ and fill the actual motor

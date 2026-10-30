@@ -15,7 +15,7 @@ from ..camera import OverheadCamera
 from ..compute_guard import budgeted, check_resources
 from ..execution import joint_names
 from ..paths import RUNS
-from .session import RobotWorker, SyncSession, hardware_configuration
+from .session import RobotWorker, SyncSession
 from .gizmo import AxisDrag, hit_axis
 
 
@@ -50,6 +50,8 @@ class SyncConsole:
         self.session_directory.mkdir(parents=True)
         write_json(self.session_directory / "startup.json", {
             "schema": "openarm.console_startup.v1", "backend": session.worker.backend,
+            "ros_namespace": getattr(session.worker, "ros_namespace", ""),
+            "physical": getattr(session.worker, "physical", False),
             "reference_site": session.reference.site,
             "joint_positions_rad": {arm: values.tolist() for arm, values in initial_feedback.positions.items()},
             "tcp_relative_cm": {arm: session.reference.from_world(session.twin.tcp_position(arm)).tolist()
@@ -102,7 +104,8 @@ class SyncConsole:
         header.pack(fill="x")
         ttk.Label(header, text="OpenArm", style="Title.TLabel").pack(side="left")
         ttk.Label(header, text="Control console", padding=(16, 0)).pack(side="left")
-        badge = "SIMULATION DEMO" if self.session.worker.backend == "demo" else "PHYSICAL ROBOT"
+        physical = getattr(self.session.worker, "physical", False)
+        badge = "PHYSICAL ROBOT | ROS 2" if physical else ("ROS 2 ROBOT" if self.session.worker.backend == "ros" else "SIMULATION DEMO")
         ttk.Label(header, text=badge, style="Step.TLabel").pack(side="right")
         body = ttk.Frame(self.root, padding=(12, 0, 12, 6))
         body.pack(fill="both", expand=True)
@@ -162,7 +165,7 @@ class SyncConsole:
         footer = ttk.Frame(self.root, padding=(18, 4, 18, 10))
         footer.pack(fill="x")
         ttk.Label(footer, textvariable=self.connection, style="Muted.TLabel").pack(side="left")
-        if self.session.worker.backend == "can":
+        if physical or self.session.worker.backend == "can":
             ttk.Label(footer, text="Arm joints only. Motors release after motion/stop; support both arms.", style="Muted.TLabel").pack(side="right")
 
     def action(self, event, **details):
@@ -574,31 +577,24 @@ class SyncConsole:
 @budgeted("openarm_sim.console.app")
 def main():
     parser = argparse.ArgumentParser(description="Preview TCP targets, execute actions and synchronize robot feedback")
-    parser.add_argument("--backend", choices=["demo", "can"], default="demo")
-    parser.add_argument("--hardware-config", type=Path)
-    parser.add_argument("--supported", action="store_true", help="Both physical arms are supported for motor release")
+    parser.add_argument("--namespace", default="", help="Namespace of the ROS trajectory actions and joint_states")
+    parser.add_argument("--physical", action="store_true", help="Identify the connected ROS execution backend as physical hardware")
     parser.add_argument("--planner", choices=["ompl", "mink", "curobo"], default="ompl")
     parser.add_argument("--drum-asset", type=Path)
     parser.add_argument("--targets", type=Path, default=RUNS / "sync/targets.json")
     parser.add_argument("--speed", type=float, default=0.2)
-    parser.add_argument("--show-plant", action="store_true", help="Open a separate MuJoCo window for the demo robot receiving joint commands")
     parser.add_argument("--record", type=Path, help="Record an independent MuJoCo demo without opening Tk")
     parser.add_argument("--smoke-test", action="store_true", help="Exercise TCP preview, explicit execution and feedback synchronization")
     args = parser.parse_args()
-    if args.show_plant and (args.backend != "demo" or args.record):
-        raise ValueError("--show-plant requires the interactive MuJoCo demo backend")
-    if args.backend == "can":
-        if args.record or args.smoke_test:
-            raise ValueError("Automatic demonstration is available only with the MuJoCo backend")
-        if args.hardware_config is None or not args.supported:
-            raise ValueError("CAN requires --hardware-config and --supported")
-        hardware_configuration(args.hardware_config)
+    if args.physical and args.smoke_test:
+        raise ValueError("Automatic GUI checks require a simulation backend")
     if args.record:
         from .video import record
 
         record(args.record, args.planner, args.drum_asset)
         return
-    worker = RobotWorker(args.backend, args.hardware_config, args.drum_asset, show_plant=args.show_plant)
+    worker = RobotWorker("ros", ros_namespace=args.namespace)
+    worker.physical = args.physical
     session = None
     try:
         if not worker.ready.wait(10):
@@ -606,7 +602,8 @@ def main():
         worker.read()
         session = SyncSession(worker, args.planner, args.drum_asset, args.speed)
         console = SyncConsole(session, args.targets)
-        print(json.dumps({"sync_console": "ready", "backend": args.backend, "planner": args.planner,
+        print(json.dumps({"sync_console": "ready", "backend": "ros2", "planner": args.planner,
+                          "namespace": args.namespace, "physical": args.physical,
                           "render_resolution": [console.width, console.height], "session": str(console.session_directory)}), flush=True)
         if args.smoke_test:
             started = time.monotonic()

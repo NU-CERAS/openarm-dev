@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 import tkinter as tk
+import uuid
 
 import numpy as np
 
@@ -13,6 +14,7 @@ from ..camera import OverheadCamera
 from ..compute_guard import budgeted
 from ..paths import RUNS
 from .session import RobotWorker, SyncSession
+from .launch import stop_backend
 
 
 @budgeted("openarm_sim.console.doctor")
@@ -21,18 +23,25 @@ def main() -> None:
     parser.add_argument("--gui", action="store_true", help="Also exercise both demo windows, preview, execution and automatic sync")
     parser.add_argument("--hardware", action="store_true", help="Verify the CAN Python binding without opening any bus")
     args = parser.parse_args()
-    for executable in ("systemd-run", "systemctl", "nice"):
+    for executable in (("systemd-run", "systemctl", "nice") if sys.platform == "linux" else ("nice",)):
         if shutil.which(executable) is None:
             raise FileNotFoundError(f"Required executable not found: {executable}")
-    subprocess.run(["systemctl", "--user", "show-environment"], check=True, stdout=subprocess.DEVNULL)
+    if sys.platform == "linux":
+        subprocess.run(["systemctl", "--user", "show-environment"], check=True, stdout=subprocess.DEVNULL)
     subprocess.run([sys.executable, "-m", "pip", "check"], check=True)
-    if not os.environ.get("DISPLAY"):
+    if sys.platform == "linux" and not os.environ.get("DISPLAY"):
         raise RuntimeError("A graphical desktop with DISPLAY is required for the Tk console")
     root = tk.Tk()
     root.withdraw()
     root.update()
     root.destroy()
-    worker = RobotWorker(realtime=False)
+    namespace = f"/console_check_{uuid.uuid4().hex[:10]}"
+    output = RUNS / "checks" / str(time.time_ns())
+    output.mkdir(parents=True)
+    backend_log = (output / "backend.log").open("w")
+    process = subprocess.Popen([sys.executable, "-m", "openarm_sim.console.ros_backend", "--namespace", namespace],
+                               stdout=backend_log, stderr=subprocess.STDOUT)
+    worker = RobotWorker("ros", ros_namespace=namespace)
     session = None
     try:
         if not worker.ready.wait(10):
@@ -62,18 +71,21 @@ def main() -> None:
             if frame.rgb.shape != (480, 640, 3):
                 raise ValueError("Renderer returned an unexpected image shape")
     finally:
-        session.close() if session is not None else worker.close()
+        try:
+            session.close() if session is not None else worker.close()
+        finally:
+            stop_backend(process)
+            backend_log.close()
     if args.hardware:
         import openarm_can
 
         print(f"CAN binding: {openarm_can.__file__}", flush=True)
     if args.gui:
-        output = RUNS / "checks" / str(time.time_ns())
-        output.mkdir(parents=True)
-        subprocess.run([sys.executable, "-m", "openarm_sim.console.app", "--smoke-test", "--show-plant",
+        subprocess.run([sys.executable, "-m", "openarm_sim.console.launch", "--target", "demo", "--show-plant",
+                        "--namespace", namespace, "--smoke-test",
                         "--targets", str(output / "targets.json")], check=True)
     print(json.dumps({"console_check": "passed", "python": sys.executable,
-                      "consecutive_reaches": 2, "tcp_errors_m": errors, "gui_checked": args.gui,
+                      "consecutive_reaches": 2, "transport": "ros2", "tcp_errors_m": errors, "gui_checked": args.gui,
                       "hardware_binding_checked": args.hardware}), flush=True)
 
 

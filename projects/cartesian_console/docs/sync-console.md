@@ -9,16 +9,19 @@ bash projects/cartesian_console/scripts/run_sync.sh
 ```
 
 Install with `bash projects/cartesian_console/scripts/setup.sh` from the repository
-root. The launcher selects the installed private environment automatically.
-Set `OPENARM_PYTHON` to select an explicit interpreter with this project installed.
+root. This extends the root platform setup with its console profile. The launcher
+selects the root ROS environment automatically. `OPENARM_PYTHON` selects another
+explicitly activated ROS interpreter.
 It sets the project cache directory, limits CPU threads, obtains the shared
-compute slot and opens the English interface. No ROS services are needed for
-the direct SocketCAN adapter. The robot transport, live twin, trajectory planner
-and planning model are started together and closed with the window.
+compute slot and opens the English interface. A ROS 2 execution node owns MuJoCo
+physics or the shared CAN driver. The console sends FollowJointTrajectory actions
+and reads measured JointState feedback. The local planner and preview remain
+MuJoCo models. Owned processes close with the window.
 The GUI holds the shared compute slot until it closes.
 
 The default planner is OMPL RRTConnect with MuJoCo collision checks. It requires
-no GPU, CUDA packages or ROS services. Select the optional CUDA planner with:
+no GPU or CUDA packages. ROS Jazzy is required for execution and feedback.
+Select the optional CUDA planner with:
 
 ```bash
 bash projects/cartesian_console/scripts/run_sync.sh --planner curobo
@@ -113,12 +116,33 @@ For testing, open a separate window for the independent MuJoCo demo robot:
 bash projects/cartesian_console/scripts/run_sync.sh --show-plant
 ```
 
-The additional MuJoCo session runs in a separate process with the controlled
-robot's own model, physics state and actuators. Joint commands and feedback use
-an interprocess connection. The console has a separate preview model. Editing a target changes
-the preview; **Execute action** submits joint commands to the demo robot, whose
-feedback automatically updates the preview after completion. This option is
-available with the demo backend.
+The execution node runs independent MuJoCo physics and actuators. The additional
+window renders its ROS joint feedback in a separate process; rendering does not
+block the execution loop. The console has its own preview model. Editing changes
+the preview; **Execute action** sends a ROS trajectory to the execution node.
+Feedback automatically updates the preview after completion.
+
+The shared interface is `openarm_tools.ros_execution`. Both targets expose:
+
+- `/left_joint_trajectory_controller/follow_joint_trajectory`
+- `/right_joint_trajectory_controller/follow_joint_trajectory`
+- `/joint_states`, with measured positions and velocities for both arms.
+
+`--namespace` scopes these relative ROS names. Managed demo launches choose a
+unique namespace unless one is explicitly supplied. To connect an existing compatible
+robot without starting a backend:
+
+```bash
+bash projects/cartesian_console/scripts/run_sync.sh --target remote --namespace /robot
+```
+
+Use `--physical` when that external robot is physical hardware. The native
+execution nodes accept relative trajectories with complete seven-joint positions
+and velocities, zero header timestamp, and backend-configured tolerances.
+Stop cancels the active ROS action. The ROS-control simulation can expose the
+same actions with `trajectory_control:=true` in its launch arguments.
+The native MuJoCo/CAN execution node accepts one robot motion at a time across
+both arms. Another goal is rejected while a trajectory is active.
 
 The viewport renders at its native pixel dimensions, initially up to 1280 x 760.
 Resizing rebuilds the renderers for the available area, up to 1920 x 1080, without
@@ -129,6 +153,8 @@ Targets are stored in `runs/cartesian_console/sync/targets.json` by default.
 `--targets PATH` selects another file. Each GUI session writes planned trajectories,
 feedback JSONL and execution reports under `runs/cartesian_console/sync/sessions/`.
 The session log also records selected target coordinates and planning rejections.
+The launcher prints the ROS backend log path under
+`runs/cartesian_console/sync/ros/<session>/backend.log`.
 The console's default joint speed limit is 0.2 rad/s, with 0.5 rad/s² acceleration;
 hardware's configured speed can reduce that limit further.
 
@@ -186,7 +212,7 @@ transport, feedback synchronization, planner and GUI together:
 
 ```bash
 bash projects/cartesian_console/scripts/run_sync.sh \
-  --backend can \
+  --target can \
   --hardware-config runs/cartesian_console/sync/hardware.json \
   --supported
 ```

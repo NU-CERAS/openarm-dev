@@ -33,7 +33,39 @@ right_forward_position_controller:
       - openarm_right_joint6
       - openarm_right_joint7
 
-# Gripper opening in meters, 0.0 (closed) to 0.044 (open)
+left_joint_trajectory_controller:
+  ros__parameters:
+    type: joint_trajectory_controller/JointTrajectoryController
+    joints:
+      - openarm_left_joint1
+      - openarm_left_joint2
+      - openarm_left_joint3
+      - openarm_left_joint4
+      - openarm_left_joint5
+      - openarm_left_joint6
+      - openarm_left_joint7
+    command_interfaces: [position]
+    state_interfaces: [position, velocity]
+    allow_partial_joints_goal: false
+    interpolate_from_desired_state: false
+
+right_joint_trajectory_controller:
+  ros__parameters:
+    type: joint_trajectory_controller/JointTrajectoryController
+    joints:
+      - openarm_right_joint1
+      - openarm_right_joint2
+      - openarm_right_joint3
+      - openarm_right_joint4
+      - openarm_right_joint5
+      - openarm_right_joint6
+      - openarm_right_joint7
+    command_interfaces: [position]
+    state_interfaces: [position, velocity]
+    allow_partial_joints_goal: false
+    interpolate_from_desired_state: false
+
+# 夹爪开口使用 meters，范围为 0.0 至 0.044。
 left_gripper_controller:
   ros__parameters:
     type: forward_command_controller/ForwardCommandController

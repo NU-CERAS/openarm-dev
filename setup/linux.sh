@@ -3,11 +3,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_ROS=0
 HARDWARE=0
+CONSOLE=0
 for arg in "$@"; do
   case "$arg" in
     --build-ros) BUILD_ROS=1 ;;
     --hardware) HARDWARE=1 ;;
-    --help) echo 'Usage: bash setup/linux.sh [--build-ros] [--hardware]'; exit 0 ;;
+    --console) CONSOLE=1 ;;
+    --help) echo 'Usage: bash setup/linux.sh [--build-ros] [--hardware] [--console]'; exit 0 ;;
     *) echo "Unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -20,6 +22,8 @@ fi
 sudo apt-get update
 sudo apt-get install -y curl ca-certificates software-properties-common python3
 sudo add-apt-repository -y universe
+mkdir -p "$ROOT/runs/setup/cache"
+export TMPDIR="$ROOT/runs/setup/cache"
 # Official ROS apt-source package manages keys and repository configuration.
 if ! dpkg-query -W -f='${Status}' ros2-apt-source 2>/dev/null | grep -q 'install ok installed'; then
   release="$(curl -fsSL https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')"
@@ -33,6 +37,9 @@ packages=()
 while IFS= read -r package; do
   [[ -z "$package" || "$package" == \#* ]] || packages+=("$package")
 done < "$ROOT/dependencies/ubuntu/apt.txt"
+if [[ "$CONSOLE" == 1 ]]; then
+  packages+=(python3-tk fonts-dejavu-core)
+fi
 sudo apt-get install -y "${packages[@]}"
 cd "$ROOT"
 git submodule update --init --recursive
@@ -49,18 +56,12 @@ set +u
 source /opt/ros/jazzy/setup.bash
 set -u
 if [[ "$HARDWARE" == 1 ]]; then
-  # Import pinned optional CAN source only; never overwrite the existing submodules.
-  python3 - <<'PY' | vcs import src/vendor
-import yaml
-with open('dependencies/upstream.repos') as f:
-    repos = yaml.safe_load(f)['repositories']
-print(yaml.safe_dump({'repositories': {'openarm_can': repos['openarm_can']}}))
-PY
-  expected="$(python3 -c 'import yaml; print(yaml.safe_load(open("dependencies/upstream.repos"))["repositories"]["openarm_can"]["version"])')"
-  [[ "$(git -C src/vendor/openarm_can rev-parse HEAD)" == "$expected" ]] || {
-    echo 'Existing openarm_can checkout differs from dependency pin; reconcile it before installing.' >&2; exit 1;
-  }
-  .venv/bin/python -m pip install ./src/vendor/openarm_can/python
+  .venv/bin/python setup/can.py
+fi
+if [[ "$CONSOLE" == 1 ]]; then
+  console_args=()
+  [[ "$HARDWARE" == 0 ]] || console_args+=(--hardware)
+  .venv/bin/python setup/console.py "${console_args[@]}"
 fi
 if [[ "$BUILD_ROS" == 1 ]]; then
   # Build only the simulation's required local packages, not hardware/MoveIt.

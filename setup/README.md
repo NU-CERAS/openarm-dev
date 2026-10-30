@@ -18,14 +18,28 @@ Optional flags:
 
 - `--build-ros`: build `openarm_description` and `openarm_mujoco_sim`. Requires a checkout path without spaces. Then `source install/setup.bash` and `openarm sim --ros`.
 - `--hardware`: fetch the pinned OpenArm CAN source and build its Python bindings. CAN utilities are installed by the base setup, but adapter/kernel configuration is separate.
+- `--console`: install the Cartesian Console into the root `.venv`, including
+  Tk, CPU planning and the shared ROS trajectory client/server. Combine with
+  `--hardware` to prepare the CAN execution backend and configuration templates.
 
-Both flags can be combined. ROS apt packages track the Jazzy repository; see `dependencies/README.md` for version guarantees.
+These flags can be combined. ROS apt packages track the Jazzy repository; see `dependencies/README.md` for version guarantees.
+
+The Mac installer accepts `--console` to select the locked Pixi `console`
+environment. That profile requires macOS 15+ for the OMPL wheel. It includes the
+console's Python MuJoCo runtime and has been dependency-resolved; native Mac
+rendering and ROS execution still require validation on Mac hardware. The root
+default environment retains its native MuJoCo dependency.
+
+Start the console using `bash projects/cartesian_console/scripts/run_demo.sh`.
+Its launcher selects the root environment and starts ROS execution, host MuJoCo
+physics, a ROS feedback window, and the local preview. The console's
+`scripts/setup.sh` delegates to these root platform installers.
 
 ## Windows / WSL2
 
 Run `setup/windows.ps1` in PowerShell. It installs Ubuntu-24.04 if absent; complete first-run username setup and any requested reboot, then rerun. Existing WSL must be installed and accessible through `wsl.exe`.
 
-The script uses a separate clone at `~/dev/openarm-dev` inside WSL and runs `setup/linux.sh`. It does not copy uncommitted Windows changes, reset existing work, or automatically pull newer commits. Push the reorganization first, or place this checkout in WSL yourself. Options: `-RepoPath`, `-Distro`, `-BuildRos`, `-Hardware`. Default distro must be Ubuntu 24.04. WSLg provides the Linux GUI on Windows 11.
+The script uses a separate clone at `~/dev/openarm-dev` inside WSL and runs `setup/linux.sh`. It does not copy uncommitted Windows changes, reset existing work, or automatically pull newer commits. Push the current branch first, or place this checkout in WSL yourself. Options: `-RepoPath`, `-Distro`, `-BuildRos`, `-Hardware`, `-Console`, `-Branch`. Default distro must be Ubuntu 24.04. WSLg provides the Linux GUI on Windows 11. `-Console` forwards the root Ubuntu console profile.
 
 For a checkout already inside WSL, simply run `bash setup/linux.sh` there. USB CAN access in WSL requires USB passthrough and a suitable kernel driver; `--hardware` alone cannot guarantee adapter access. A native Ubuntu robot host is the simplest initial hardware target.
 

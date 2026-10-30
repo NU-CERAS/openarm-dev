@@ -10,14 +10,16 @@ from ..simulation import ReachSimulation
 
 
 class MujocoPlantWindow:
-    def __init__(self, sim: ReachSimulation):
+    def __init__(self, sim: ReachSimulation, feedback_only=False):
         self.sim = sim
         self.root = tk.Tk()
         self.root.title("OpenArm | MuJoCo test robot")
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         ttk.Label(self.root, text="CONTROLLED MUJOCO ROBOT", font=("DejaVu Sans", 16, "bold"),
                   padding=12).pack(fill="x")
-        ttk.Label(self.root, text="Independent physics session | Receives joint commands after Execute action",
+        description = ("ROS 2 measured feedback | Independent physics execution node" if feedback_only else
+                       "Independent physics session | Receives joint commands after Execute action")
+        ttk.Label(self.root, text=description,
                   padding=(12, 0, 12, 8)).pack(fill="x")
         self.image = ttk.Label(self.root)
         self.image.pack()

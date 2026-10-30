@@ -2,11 +2,12 @@
 
 The primary tested platform is an Ubuntu 24.04 x86_64 desktop. The default
 tabletop demo uses CPU OMPL planning, MuJoCo physics and a local Tk interface.
-It requires no camera, ROS, CUDA package, trained checkpoint or downloaded drum
-asset. Run these commands in Bash.
+It uses ROS Jazzy for execution and feedback. Camera, CUDA, trained checkpoints
+and downloaded drum assets are optional. Run shell commands in Bash.
 
-Use a graphical desktop login with systemd user services available. The shared
-compute guard uses systemd-run --user to enforce memory and CPU limits.
+On Ubuntu/WSL, use a graphical desktop login with systemd user services available.
+The Linux compute guard uses systemd-run --user to enforce memory and CPU limits.
+On macOS, the guard monitors the owned process group's memory and available RAM.
 The guard requires at least 8 GiB of available memory throughout execution.
 
 ## 1. Get the branch
@@ -21,7 +22,7 @@ sudo apt-get install -y git
 While this contribution is under review:
 
 ~~~bash
-git clone --single-branch --branch feat/jixin \
+git clone --single-branch --branch feat/ros-execution \
   https://github.com/jixinyan/openarm-dev.git
 cd openarm-dev
 ~~~
@@ -29,29 +30,45 @@ cd openarm-dev
 ## 2. Install the environment
 
 ~~~bash
-bash projects/cartesian_console/scripts/setup.sh
+bash setup/linux.sh --console
 ~~~
 
-This command installs missing Ubuntu system packages using sudo, creates a
-private Python 3.12 environment at `runs/cartesian_console/env/`, installs the
-exact CPU package versions from `requirements-ubuntu-cpu.txt`, installs both
-editable project packages, and checks dependencies, actual OMPL reaches,
-feedback synchronization, Tk and rendering. Repeating setup reuses the
-environment. Existing hardware configuration files are preserved.
+This extends the root Ubuntu setup: ROS Jazzy and shared dependencies come from
+the root installer; the console installs into the root `.venv`. CPU dependency
+pins use NumPy 1.26 and a compatible SciPy release. Existing hardware
+configuration files are preserved.
 
 The CPU demo uses committed models under `robots/v1.0/`. The installation needs
-Internet access. Conda, ROS and CUDA are optional. The script requires Ubuntu
-24.04 x86_64; macOS is not supported by this installer.
+Internet access. CUDA is optional.
 
-Administrators who have already installed the system packages may use
-`--skip-system-packages`. `--python /path/to/python3.12` selects another Python
-3.12 interpreter with Tk. `OPENARM_ENV` selects an explicit environment directory;
-use the same value for setup and subsequent launcher commands. For an existing
-manually installed environment, set `OPENARM_PYTHON` to its interpreter.
+Apple Silicon Mac with macOS 15 or newer:
+
+~~~bash
+bash setup/mac.sh --console
+~~~
+
+This installs the locked Pixi `console` environment under the root manifest.
+The launcher enters that environment automatically. The lock has been resolved;
+native Mac rendering and ROS operation require validation on a Mac.
+
+Windows 11 uses the root WSL installer from PowerShell:
+
+~~~powershell
+powershell -ExecutionPolicy Bypass -File setup/windows.ps1 -Console
+~~~
+
+Run subsequent console commands inside that WSL checkout. Ubuntu/WSL requires a
+working user systemd session. WSL hardware additionally requires actual USB/CAN
+setup. WSL runtime remains unverified.
+
+For an already prepared root Ubuntu environment, activate ROS and `.venv`, then
+run `python setup/console.py` to add console dependencies. An explicitly prepared
+ROS environment may use `OPENARM_PYTHON=/absolute/path/to/python`; activate its
+ROS environment first. See [root setup](../../../setup/README.md).
 
 | Script | Purpose |
 | --- | --- |
-| `scripts/setup.sh` | Install the CPU environment and perform native checks |
+| `scripts/setup.sh` | Extend the root platform environment with the console profile |
 | `scripts/setup.sh --hardware` | Also install the pinned CAN binding and create hardware templates |
 | `scripts/check_setup.sh` | Check dependencies, graphics and two feedback-driven reaches |
 | `scripts/check_setup.sh --gui` | Also check both actual demo windows and automatic sync |
@@ -66,9 +83,10 @@ Script paths in the table are relative to `projects/cartesian_console/`.
 bash projects/cartesian_console/scripts/run_demo.sh
 ~~~
 
-The launchers select the installed private environment automatically. The demo
-opens the console and a separate-process MuJoCo robot window. Closing the console
-closes the robot process and releases the compute slot.
+The launchers select the root ROS environment automatically. The demo starts a
+ROS execution node with native MuJoCo physics, a separate measured-feedback
+window and the console's local preview. Closing the console closes its owned
+execution/viewer processes and releases the compute slot.
 
 1. Select an arm.
 2. Drag its TCP's red X, green Y or blue Z arrow. Release to preview the target pose.
@@ -79,8 +97,8 @@ closes the robot process and releases the compute slot.
 5. Save a reached position under **Saved positions**; **Preview saved position**
    plans that target from current feedback. Choose **Execute action** to execute it.
 
-The additional MuJoCo window shows the independent demo robot. It receives
-joint commands only after **Execute action**. The console renders its own
+The additional MuJoCo window renders feedback from the execution node. The node
+receives a ROS trajectory action only after **Execute action**. The console renders its own
 preview model and requires no camera.
 
 Coordinates are centimeters from the torso's top-center point. X is forward,
@@ -109,13 +127,14 @@ bash projects/cartesian_console/scripts/check_setup.sh --gui
 The `--gui` check opens the actual interface, drags a TCP axis, previews and
 explicitly executes in MuJoCo, saves/reuses a named position and closes both windows.
 
-## 5. Record the feature showcase
+## 5. Record the feature showcase on Ubuntu
 
 For the isolated GUI recorder, install Xvfb and xauth:
 
 ~~~bash
 sudo apt-get install xvfb xauth
-source runs/cartesian_console/env/bin/activate
+source /opt/ros/jazzy/setup.bash
+source .venv/bin/activate
 openarm-showcase --output runs/cartesian_console/showcase
 ~~~
 
@@ -212,7 +231,7 @@ supplied separately. The source branch contains training/evaluation tools.
 Install the optional binding and prepare the connection templates:
 
 ~~~bash
-bash projects/cartesian_console/scripts/setup.sh --hardware
+bash setup/linux.sh --console --hardware
 ~~~
 
 Use the [synchronization guide](sync-console.md) to fill the
