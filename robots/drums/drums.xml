@@ -1,0 +1,19 @@
+<mujoco model="drum_kit">
+    <compiler angle="radian"/>
+
+    <asset>
+        <mesh name="drums_mesh" file="drums.obj"/>
+    </asset>
+
+    <worldbody>
+        <light pos="0 0 5"/>
+
+        <body name="drum_kit" pos="0 0 2.1" euler="1.5708 0 0">
+            <geom name="drums_visual"
+                  type="mesh"
+                  mesh="drums_mesh"
+                  contype="0"
+                  conaffinity="0"/>
+        </body>
+    </worldbody>
+</mujoco>
