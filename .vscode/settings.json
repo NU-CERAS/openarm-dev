@@ -1,4 +1,5 @@
 {
   "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
-  "cmake.sourceDirectory": "${workspaceFolder}/src/ros/openarm_mujoco_sim"
+  "cmake.sourceDirectory": "${workspaceFolder}/src/ros/openarm_mujoco_sim",
+  "python.languageServer": "None"
 }
