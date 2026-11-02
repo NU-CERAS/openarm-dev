@@ -9,6 +9,7 @@ description = "Cartesian preview, motion planning and ROS robot execution"
 requires-python = ">=3.12"
 dependencies = [
     "openarm-tools>=0.1.0",
+    "openarm-drummer>=0.1.0",
     "mujoco==3.17.0",
     "numpy>=1.26,<3",
     "mink==1.3.0",

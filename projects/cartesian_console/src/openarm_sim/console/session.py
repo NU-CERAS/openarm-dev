@@ -15,7 +15,7 @@ from openarm_tools.robot.config import load, validate_positions
 
 from ..execution import JointTrajectory, joint_names
 from ..paths import BODY_REFERENCE
-from ..simulation import ARMS, ReachSimulation
+from ..simulation import ARMS, ReachSimulation, reach_simulation
 
 
 @dataclass
@@ -81,8 +81,8 @@ def check_start(plan: Preview, feedback: Feedback, tolerance=0.03):
 
 
 class MujocoPlant:
-    def __init__(self, scene=None, realtime=True, show_viewer=False):
-        self.sim = ReachSimulation(drum_asset=scene, worktable=scene is None, tabletop_mount=scene is None)
+    def __init__(self, scene=None, realtime=True, show_viewer=False, robot_model="v1.0"):
+        self.sim = reach_simulation(robot_model, drum_asset=scene, worktable=scene is None, tabletop_mount=scene is None)
         self.sim.reset_zero()
         self.realtime = realtime
         self.viewer = None
@@ -136,8 +136,8 @@ class MujocoPlant:
         self.sim.close()
 
 
-def run_mujoco_plant(connection, cancel, scene, realtime):
-    plant = MujocoPlant(scene, realtime, show_viewer=True)
+def run_mujoco_plant(connection, cancel, scene, realtime, robot_model):
+    plant = MujocoPlant(scene, realtime, show_viewer=True, robot_model=robot_model)
     try:
         connection.send(("result", None))
         while True:
@@ -163,11 +163,11 @@ def run_mujoco_plant(connection, cancel, scene, realtime):
 
 
 class MujocoProcessPlant:
-    def __init__(self, scene=None, realtime=True):
+    def __init__(self, scene=None, realtime=True, robot_model="v1.0"):
         context = multiprocessing.get_context("spawn")
         self.connection, child = context.Pipe()
         self.cancel_event = context.Event()
-        self.process = context.Process(target=run_mujoco_plant, args=(child, self.cancel_event, scene, realtime),
+        self.process = context.Process(target=run_mujoco_plant, args=(child, self.cancel_event, scene, realtime, robot_model),
                                        name="openarm-mujoco-robot")
         self.process.start()
         child.close()
@@ -332,7 +332,11 @@ class CanPlant:
 
 
 class RobotWorker:
-    def __init__(self, backend="demo", configuration=None, scene=None, realtime=True, show_plant=False, ros_namespace=""):
+    def __init__(self, backend="demo", configuration=None, scene=None, realtime=True, show_plant=False, ros_namespace="", robot_model="v1.0"):
+        if robot_model not in ("v1.0", "opendrummer"):
+            raise ValueError("Unknown robot model")
+        if backend == "can" and robot_model != "v1.0":
+            raise ValueError("OpenDrummer requires a reviewed ROS hardware joint mapping")
         if show_plant and backend != "demo":
             raise ValueError("The independent MuJoCo plant viewer requires the demo backend")
         self.commands = queue.Queue(maxsize=1)
@@ -348,6 +352,7 @@ class RobotWorker:
         self.backend = backend
         self.configuration = configuration
         self.scene = scene
+        self.robot_model = robot_model
         self.realtime = realtime
         self.show_plant = show_plant
         self.ros_namespace = ros_namespace
@@ -374,7 +379,8 @@ class RobotWorker:
 
                 plant = RosPlant(self.ros_namespace)
             elif self.backend == "demo":
-                plant = MujocoProcessPlant(self.scene, self.realtime) if self.show_plant else MujocoPlant(self.scene, self.realtime)
+                plant = (MujocoProcessPlant(self.scene, self.realtime, self.robot_model) if self.show_plant
+                         else MujocoPlant(self.scene, self.realtime, robot_model=self.robot_model))
             else:
                 plant = CanPlant(self.configuration)
             resources.callback(plant.close)
@@ -437,16 +443,17 @@ class RobotWorker:
 
 
 class SyncSession:
-    def __init__(self, worker: RobotWorker, planner="ompl", scene=None, speed=0.2, acceleration=0.5):
+    def __init__(self, worker: RobotWorker, planner="ompl", scene=None, speed=0.2, acceleration=0.5, robot_model="v1.0"):
         if not 0 < speed <= 0.6 or not 0 < acceleration <= 1.5:
             raise ValueError("Invalid trajectory speed or acceleration limit")
         self.worker = worker
-        self.twin = ReachSimulation(drum_asset=scene, worktable=scene is None, tabletop_mount=scene is None)
-        self.preview = ReachSimulation(planner=planner, drum_asset=scene, worktable=scene is None, tabletop_mount=scene is None)
-        site = self.twin.model.site(BODY_REFERENCE["site"]).id
-        if self.twin.model.site_bodyid[site] != self.twin.model.body(BODY_REFERENCE["body"]).id:
+        self.twin = reach_simulation(robot_model, drum_asset=scene, worktable=scene is None, tabletop_mount=scene is None)
+        self.preview = reach_simulation(robot_model, planner=planner, drum_asset=scene, worktable=scene is None, tabletop_mount=scene is None)
+        reference = getattr(self.twin, "body_reference", BODY_REFERENCE)
+        site = self.twin.model.site(reference["site"]).id
+        if self.twin.model.site_bodyid[site] != self.twin.model.body(reference["body"]).id:
             raise ValueError("The body reference must be attached to the fixed chassis")
-        self.reference = BodyReference(BODY_REFERENCE["site"], self.twin.data.site_xpos[site].copy(),
+        self.reference = BodyReference(reference["site"], self.twin.data.site_xpos[site].copy(),
                                        self.twin.data.site_xmat[site].reshape(3, 3).copy())
         self.plan = None
         self.rejection_reason = ""
@@ -524,6 +531,8 @@ class SyncSession:
             raise ValueError("Unsupported target file schema")
         payload["targets"][name.strip()] = {
             "arm": self.plan.trajectory.arm, "sim_target_m": self.plan.target.tolist(),
+            "robot_model": self.twin.robot_model,
+            "tcp_site": self.twin.model.site(self.twin.site_ids[self.plan.trajectory.arm]).name,
             "reference_site": self.reference.site,
             "reference_origin_m": self.reference.origin_m.tolist(),
             "reference_rotation": self.reference.rotation.tolist(),
@@ -541,6 +550,11 @@ class SyncSession:
         if payload["schema"] != "openarm.sync_targets.v1":
             raise ValueError("Unsupported target file schema")
         item = payload["targets"][name]
+        if item.get("robot_model", "v1.0") != self.twin.robot_model:
+            raise ValueError("Saved target belongs to another robot model")
+        expected = self.twin.model.site(self.twin.site_ids[item["arm"]]).name
+        if item.get("tcp_site", expected) != expected:
+            raise ValueError("Saved target uses a different TCP")
         return item["arm"], np.array(item["sim_target_m"], dtype=float)
 
     def close(self):

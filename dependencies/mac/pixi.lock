@@ -742,6 +742,7 @@ environments:
       - conda: https://conda.anaconda.org/robostack-jazzy/osx-arm64/ros2-distro-mutex-0.14.0-jazzy_16.conda
       - pypi: ../..
       - pypi: ../../projects/cartesian_console
+      - pypi: ../../projects/opendrummer_playground
       - pypi: https://files.pythonhosted.org/packages/05/6a/cc5cbd86389b129e29f62407e2d2f117848ae2725b7899c3029f498e65f3/mink-1.3.0-cp312-cp312-macosx_11_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/18/31/3a26c1371b5de82778914ca05ff1dbd24e5b38cbd110decb9c7dbb4d0958/ompl-2.0.1-cp312-cp312-macosx_15_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/22/7d/a27f25451c4cc62141992b51005688481210f3d3e63de3dc66f9e882ba59/websockets-17.3-cp312-cp312-macosx_11_0_arm64.whl
@@ -14439,6 +14440,7 @@ packages:
   name: openarm-sim
   requires_dist:
   - openarm-tools>=0.1.0
+  - openarm-drummer>=0.1.0
   - mujoco==3.17.0
   - numpy>=1.26,<3
   - mink==1.3.0
@@ -14457,6 +14459,13 @@ packages:
   - imageio>=2.37,<3 ; extra == 'video'
   - imageio-ffmpeg==0.6.0 ; extra == 'video'
   - trimesh==5.2.0 ; extra == 'assets'
+  requires_python: '>=3.12'
+- pypi: ../../projects/opendrummer_playground
+  name: openarm-drummer
+  requires_dist:
+  - mujoco==3.17.0
+  - numpy>=1.26,<3
+  - pillow>=11,<13
   requires_python: '>=3.12'
 - pypi: https://files.pythonhosted.org/packages/05/6a/cc5cbd86389b129e29f62407e2d2f117848ae2725b7899c3029f498e65f3/mink-1.3.0-cp312-cp312-macosx_11_0_arm64.whl
   name: mink

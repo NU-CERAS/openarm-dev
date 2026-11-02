@@ -17,7 +17,7 @@ class OmplPlanner:
         self.timeout = timeout
 
     def plan(self, arm, target, orientation=None):
-        if self.sim.model.nq != 18:
+        if np.any(self.sim.model.jnt_type == mujoco.mjtJoint.mjJNT_FREE):
             raise ValueError("Free-object transport requires an attached-object collision model")
         goal_q = self.sim._solve(arm, target, orientation)
         if goal_q is None:

@@ -1,6 +1,6 @@
 # Cartesian Console
 
-OpenArm tabletop preview, ROS 2 robot execution and collision avoidance.
+OpenArm and OpenDrummer TCP preview, ROS 2 robot execution and collision avoidance.
 The console uses the shared `openarm_tools.ros_execution` interface for simulation
 and physical robot commands/feedback. Planning uses MuJoCo locally.
 OMPL runs on CPU; cuRobo is optional. Learning lives in [RL](../rl/README.md).
@@ -22,11 +22,19 @@ environment; its OMPL wheel requires macOS 15 or newer. Mac/WSL runtime checks
 require those actual systems. The project `scripts/setup.sh` delegates to the
 root platform installer. A graphical desktop is required for the GUI.
 
-## Start the tabletop console
+## Start the OpenDrummer console
 
 ```bash
 bash projects/cartesian_console/scripts/run_demo.sh
 ```
+
+The default model is OpenDrummer with its fixed drumsticks and shared drum scene.
+The TCP is the striking end of each drumstick (`left_stick_tip` and
+`right_stick_tip`), derived from the source mesh and URDF transforms. Dragging,
+IK, collision checking, preview error and feedback synchronization use this same
+point. The torso-top reference is derived from the fixed chassis mesh of the
+selected model. The v1.0 gripper model remains available with `--model v1.0`;
+its TCP remains at the hand.
 
 The English interface subscribes to `/joint_states` at startup and displays both arms' measured
 pose in a single native-resolution sim preview. Drag a TCP axis and release to
@@ -78,6 +86,20 @@ bash projects/cartesian_console/scripts/run_robot.sh --supported
 | `curobo` | CUDA GPU | cuRobo trajectory optimization and collision checking |
 | `mink` | CPU | IK and direct joint interpolation; rejects colliding paths |
 
+For OpenDrummer cuRobo assets, use the model-specific export:
+
+```bash
+openarm-build-planning-assets --model opendrummer
+bash projects/cartesian_console/scripts/run_demo.sh --planner curobo
+```
+
+ROS uses the shared seven-joint semantic names `openarm_left_joint1..7` and
+`openarm_right_joint1..7`. The OpenDrummer simulation maps these in order to
+`lj1..7` and `rj1..7`. Physical ROS drivers must implement a reviewed mapping
+of joint order, direction, zero and limits for the selected model. The direct
+CAN launcher currently uses the reviewed v1.0 configuration and selects that
+model explicitly. OpenDrummer hardware execution has not been validated.
+
 ```bash
 bash projects/cartesian_console/scripts/run_demo.sh --planner ompl
 bash projects/cartesian_console/scripts/run_demo.sh --planner mink
@@ -109,12 +131,14 @@ using `control_msgs/action/FollowJointTrajectory`, and publish measured
 `--target remote` attaches the console to an already-running compatible robot.
 
 ```bash
-bash projects/cartesian_console/scripts/run_sync.sh --target remote --namespace /robot
+bash projects/cartesian_console/scripts/run_sync.sh --target remote --model opendrummer --namespace /robot
 ```
 
 The root `openarm_mujoco_sim` ROS-control launch supports
 `trajectory_control:=true` to expose the same action endpoints. Use the root
 `--build-ros` setup option and source the built workspace before launching it.
+Select `--model v1.0` when connecting to that v1.0 simulation. The selected
+console model must match the backend's physical kinematics and tool mounting.
 
 | Guide | Purpose |
 | --- | --- |

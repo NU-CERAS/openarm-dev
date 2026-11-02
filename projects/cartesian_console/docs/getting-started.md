@@ -10,7 +10,7 @@ optional. Run these commands from the repository root in Bash.
 Clone the development branch and its submodules:
 
 ```bash
-git clone --recurse-submodules --branch refactor https://github.com/jixinyan/openarm-dev.git
+git clone --recurse-submodules --branch main https://github.com/jixinyan/openarm-dev.git
 cd openarm-dev
 bash setup/linux.sh --console
 ```
@@ -47,6 +47,8 @@ This starts a ROS execution node with native MuJoCo physics, a separate
 measured-feedback window, and the console preview. Closing the console closes
 its owned processes. The shared compute guard permits one compute job and
 preserves at least 8 GiB of available RAM.
+The default OpenDrummer model uses each drumstick's striking tip as its TCP.
+Use `--model v1.0` for the gripper/tabletop model.
 
 1. Select an arm.
 2. Drag its TCP's red X, green Y or blue Z arrow and release to preview.
@@ -58,7 +60,8 @@ preserves at least 8 GiB of available RAM.
    creates a preview; **Execute action** executes it.
 
 Coordinates are centimeters from the fixed torso-top reference. X is forward,
-Y is left and Z is up. `(40, -25, -30)` cm is an example for the right arm.
+Y is left and Z is up. Small drags from the synchronized tip provide convenient
+initial reach checks. Coordinates saved for one robot model belong to that model.
 The demo starts at joint zero; physical startup reads actual joints using the
 reviewed motor direction and zero mappings. The interface requires no camera.
 

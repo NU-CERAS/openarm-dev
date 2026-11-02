@@ -31,6 +31,7 @@ def stop_backend(process):
 def main():
     parser = argparse.ArgumentParser(description="Start a ROS 2 execution backend and the Cartesian Console")
     parser.add_argument("--target", choices=["demo", "can", "remote"], default="demo")
+    parser.add_argument("--model", choices=["v1.0", "opendrummer"], default="opendrummer")
     parser.add_argument("--namespace", help="ROS namespace; owned demo launches use a unique namespace by default")
     parser.add_argument("--hardware-config", type=Path)
     parser.add_argument("--supported", action="store_true")
@@ -44,6 +45,8 @@ def main():
     if args.target == "can" and (args.hardware_config is None or not args.supported):
         raise ValueError("CAN requires --hardware-config and --supported")
     if args.target == "can":
+        if args.model != "v1.0":
+            raise ValueError("The direct CAN configuration supports v1.0; OpenDrummer requires a reviewed ROS joint mapping")
         from .session import hardware_configuration
 
         hardware_configuration(args.hardware_config)
@@ -53,7 +56,7 @@ def main():
             directory.mkdir(parents=True)
             log = resources.enter_context((directory / "backend.log").open("w"))
             command = [sys.executable, "-u", "-m", "openarm_sim.console.ros_backend", "--backend", args.target,
-                       "--namespace", args.namespace]
+                       "--namespace", args.namespace, "--model", args.model]
             if args.show_plant:
                 command.append("--show-plant")
             if args.hardware_config:
@@ -69,7 +72,8 @@ def main():
             client = RosExecutionClient(args.namespace)
             connection.callback(client.close)
             client.wait_ready(timeout=15)
-        command = [sys.executable, "-u", "-m", "openarm_sim.console.app", "--namespace", args.namespace, *console_args]
+        command = [sys.executable, "-u", "-m", "openarm_sim.console.app", "--namespace", args.namespace,
+                   "--model", args.model, *console_args]
         if args.target == "can":
             command.append("--physical")
         if args.drum_asset:

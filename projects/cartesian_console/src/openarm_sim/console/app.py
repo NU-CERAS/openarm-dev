@@ -24,7 +24,8 @@ class SyncConsole:
         self.session, self.targets = session, targets
         initial_feedback = self.session.sync()
         self.root = tk.Tk()
-        self.root.title("OpenArm | Control console")
+        self.robot_label = "OpenDrummer" if session.twin.robot_model == "opendrummer" else "OpenArm"
+        self.root.title(f"{self.robot_label} | Control console")
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.root.report_callback_exception = self.callback_error
         self.width = width or min(1280, max(640, self.root.winfo_screenwidth() - 390))
@@ -52,6 +53,8 @@ class SyncConsole:
             "schema": "openarm.console_startup.v1", "backend": session.worker.backend,
             "ros_namespace": getattr(session.worker, "ros_namespace", ""),
             "physical": getattr(session.worker, "physical", False),
+            "robot_model": session.twin.robot_model,
+            "tcp_sites": {arm: session.twin.model.site(session.twin.site_ids[arm]).name for arm in ("left", "right")},
             "reference_site": session.reference.site,
             "joint_positions_rad": {arm: values.tolist() for arm, values in initial_feedback.positions.items()},
             "tcp_relative_cm": {arm: session.reference.from_world(session.twin.tcp_position(arm)).tolist()
@@ -102,7 +105,7 @@ class SyncConsole:
     def _layout(self):
         header = ttk.Frame(self.root, padding=(18, 12))
         header.pack(fill="x")
-        ttk.Label(header, text="OpenArm", style="Title.TLabel").pack(side="left")
+        ttk.Label(header, text=self.robot_label, style="Title.TLabel").pack(side="left")
         ttk.Label(header, text="Control console", padding=(16, 0)).pack(side="left")
         physical = getattr(self.session.worker, "physical", False)
         badge = "PHYSICAL ROBOT | ROS 2" if physical else ("ROS 2 ROBOT" if self.session.worker.backend == "ros" else "SIMULATION DEMO")
@@ -115,6 +118,8 @@ class SyncConsole:
         self.edit_controls = []
         ttk.Label(side, text="Drag TCP to preview", style="Step.TLabel").pack(anchor="w", pady=(0, 8))
         ttk.Label(side, text="Origin: torso top center", style="Muted.TLabel").pack(anchor="w", pady=(0, 6))
+        if self.session.twin.robot_model == "opendrummer":
+            ttk.Label(side, text="TCP: drumstick striking tip", style="Muted.TLabel").pack(anchor="w", pady=(0, 6))
         arms = ttk.Frame(side)
         arms.pack(fill="x")
         for arm, label in (("right", "Right arm"), ("left", "Left arm")):
@@ -580,6 +585,7 @@ def main():
     parser.add_argument("--namespace", default="", help="Namespace of the ROS trajectory actions and joint_states")
     parser.add_argument("--physical", action="store_true", help="Identify the connected ROS execution backend as physical hardware")
     parser.add_argument("--planner", choices=["ompl", "mink", "curobo"], default="ompl")
+    parser.add_argument("--model", choices=["v1.0", "opendrummer"], default="v1.0")
     parser.add_argument("--drum-asset", type=Path)
     parser.add_argument("--targets", type=Path, default=RUNS / "sync/targets.json")
     parser.add_argument("--speed", type=float, default=0.2)
@@ -591,16 +597,16 @@ def main():
     if args.record:
         from .video import record
 
-        record(args.record, args.planner, args.drum_asset)
+        record(args.record, args.planner, args.drum_asset, args.model)
         return
-    worker = RobotWorker("ros", ros_namespace=args.namespace)
+    worker = RobotWorker("ros", ros_namespace=args.namespace, robot_model=args.model)
     worker.physical = args.physical
     session = None
     try:
         if not worker.ready.wait(10):
             raise TimeoutError("Robot connection did not become ready")
         worker.read()
-        session = SyncSession(worker, args.planner, args.drum_asset, args.speed)
+        session = SyncSession(worker, args.planner, args.drum_asset, args.speed, robot_model=args.model)
         console = SyncConsole(session, args.targets)
         print(json.dumps({"sync_console": "ready", "backend": "ros2", "planner": args.planner,
                           "namespace": args.namespace, "physical": args.physical,
@@ -639,7 +645,9 @@ def main():
                 console.canvas.event_generate("<ButtonPress-1>", x=int(tip[0]), y=int(tip[1]))
                 if console.drag is None or console.drag.index != 2:
                     raise RuntimeError("GUI smoke test did not select the TCP Z handle")
-                pixel = console.drag.camera.project(console.drag.origin + console.drag.axis * 0.16, console.drag.frame)
+                displacement = .02 if args.model == "opendrummer" else .06
+                parameter = console.drag.start_parameter + displacement
+                pixel = console.drag.camera.project(console.drag.origin + console.drag.axis * parameter, console.drag.frame)
                 console.canvas.event_generate("<B1-Motion>", x=pixel[0], y=pixel[1])
                 console.canvas.event_generate("<ButtonRelease-1>", x=pixel[0], y=pixel[1])
                 if session.plan is None or worker.state != "connected":

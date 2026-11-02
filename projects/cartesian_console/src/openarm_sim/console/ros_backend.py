@@ -52,6 +52,18 @@ class RobotExecutionBackend:
         start_positions = {name: value.copy() for name, value in measured.positions.items()}
         start_positions[arm] = positions[0].copy()
         start = Feedback(start_positions, measured.velocities, measured.received_at)
+        if self.worker.backend == "demo" and self.worker.robot_model == "opendrummer":
+            import xml.etree.ElementTree as ET
+            from openarm_drummer.model import SOURCE
+
+            robot = ET.parse(SOURCE).getroot()
+            bounds = np.array([[float(robot.find(f"joint[@name='{arm[0]}j{i}']/limit").get(key))
+                                for key in ("lower", "upper")] for i in range(1, 8)])
+            sample_times = np.linspace(0, trajectory.duration, max(1000, len(times) * 10))
+            samples = trajectory.sample(sample_times)
+            if np.any(samples < bounds[:, 0]) or np.any(samples > bounds[:, 1]):
+                raise ValueError("Trajectory exceeds OpenDrummer joint limits")
+            return Preview(trajectory, None, start)
         cfg = load(robot="v1.0", arm=arm) if self.worker.backend == "demo" else hardware_configuration(self.worker.configuration)[arm][1]
         for position in positions:
             validate_positions(cfg, position.tolist())
@@ -89,6 +101,7 @@ class RobotExecutionBackend:
 def main():
     parser = argparse.ArgumentParser(description="Execute standard ROS 2 joint trajectory actions with MuJoCo or CAN")
     parser.add_argument("--backend", choices=["demo", "can"], default="demo")
+    parser.add_argument("--model", choices=["v1.0", "opendrummer"], default="v1.0")
     parser.add_argument("--hardware-config", type=Path)
     parser.add_argument("--supported", action="store_true")
     parser.add_argument("--show-plant", action="store_true")
@@ -96,12 +109,14 @@ def main():
     parser.add_argument("--namespace", default="")
     args, ros_args = parser.parse_known_args()
     if args.backend == "can":
+        if args.model != "v1.0":
+            raise ValueError("OpenDrummer needs a reviewed ROS hardware joint mapping")
         if not args.supported or args.hardware_config is None or args.show_plant:
             raise ValueError("CAN requires reviewed --hardware-config and --supported, without a plant window")
         hardware_configuration(args.hardware_config)
     with ExitStack() as resources:
         resources.enter_context(lock(f"ros-execution:{args.namespace}"))
-        worker = RobotWorker(args.backend, args.hardware_config, args.drum_asset)
+        worker = RobotWorker(args.backend, args.hardware_config, args.drum_asset, robot_model=args.model)
         resources.callback(worker.close)
         if not worker.ready.wait(10):
             raise TimeoutError("Robot execution backend did not become ready")
@@ -114,7 +129,8 @@ def main():
         executor.add_node(node)
         resources.callback(executor.shutdown)
         if args.show_plant:
-            viewer = subprocess.Popen([sys.executable, "-m", "openarm_sim.console.ros_viewer", "--namespace", args.namespace])
+            viewer = subprocess.Popen([sys.executable, "-m", "openarm_sim.console.ros_viewer", "--namespace", args.namespace,
+                                       "--model", args.model])
             resources.callback(stop_viewer, viewer)
         print(json.dumps({"ros_execution": "ready", "backend": args.backend, "namespace": args.namespace}), flush=True)
         try:

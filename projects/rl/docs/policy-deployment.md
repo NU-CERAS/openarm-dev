@@ -135,3 +135,58 @@ feedback throughout replay.
 
 Connected physical arm/gripper execution remains unverified until the actual hardware and reviewed
 configuration are available.
+
+## OpenDrummer without cameras
+
+The current OpenDrummer residual actor is an oracle teacher. Its input includes
+drum-relative position, surface normal, contact-derived controller phase and
+randomized dynamics. Its reference also recomputes IK for each randomized kit
+pose and changes phase from simulator contact events. Deploying this teacher
+requires addressing both the actor and reference controller inputs.
+
+The proposed camera-free training interface is a proprioceptive actor with an
+asymmetric critic. Each drum keeps its own fixed-arm policy and a versioned
+joint-space reference captured through the console at the actual kit. The actor
+receives both arms' encoder positions/velocities, a recent history of those
+measurements and commands, the previous action, the reference joint
+positions/velocities, elapsed strike time and requested intensity. FK of the
+stick tip is available from the selected robot model and encoders. The CAN
+backend exposes `get_torque()`, while the current shared ROS snapshot carries
+positions and velocities. Torque history can be added to the actor only after
+the ROS feedback path, units, direction, calibration and timing are verified.
+
+The critic and reward may use simulator object poses, contact impulse and
+dynamics during training. Those signals must have no path into the actor,
+nominal trajectory, runtime phase transitions, normalization or termination
+decisions used by the deployed controller. The deployed reference advances on
+elapsed time and encoder tracking. It performs a bounded downstroke and
+retraction even when no contact occurs. Reward and evaluator independently
+measure qualified contact and recovery in simulation.
+
+Each policy outputs a bounded J7 residual relative to that drum's recorded
+reference. This adjusts the wrist stroke; it does not provide general Cartesian
+correction for an unknown drum position. A deterministic adapter combines the reference and residual, limits
+position, speed, acceleration and command slew, and maps model joints into the
+reviewed ROS control convention. Preview uses current measured joints; execution
+requires explicit user action and concludes with a fresh encoder sync. The
+existing 100 Hz strike controller and 50 Hz generic policy adapter are different
+interfaces; an OpenDrummer runtime needs a measured timing/latency test before
+hardware execution. The policy adapter does not provide a hardware emergency stop.
+
+Training should randomize motor response, delay, control jitter, encoder noise,
+friction, gains, stick mounting and small kit-placement errors. The reference
+trajectory stays fixed while hidden kit/dynamics values vary, so training cannot
+silently correct the stroke through oracle IK. Use held-out layout and dynamics
+seeds, report center error, contact/recovery rates, tracking and limit violations,
+and compare against that same fixed reference with zero residual. Evaluate
+position error separately from hit success.
+
+An unobserved moved drum cannot be localized from identical pre-contact joint
+histories. Exact center strikes over arbitrary 5 cm translations therefore need
+additional location information or operator reference adjustment. With the
+current hardware, each drum's reference is established by console previews and
+observed physical trials. The encoder loop verifies robot movement; acoustic
+strike quality remains an operator observation. A camera-free actor and its
+complete controller must pass the above observation restrictions and native
+physics evaluation before transfer performance can be claimed. This training
+interface is proposed; no camera-free OpenDrummer policy is trained yet.

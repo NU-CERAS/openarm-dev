@@ -23,7 +23,7 @@ def main():
         raise RuntimeError("The root console profile requires Python 3.12")
     subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(project / "requirements-ubuntu-cpu.txt")], check=True)
     subprocess.run([sys.executable, "-m", "pip", "install", "--no-build-isolation", "--no-deps", "-e", str(root),
-                    "-e", f"{project}[dev,video]"], check=True)
+                    "-e", str(root / "projects/opendrummer_playground"), "-e", f"{project}[dev,video]"], check=True)
     subprocess.run([sys.executable, "-m", "pip", "check"], check=True)
     if args.hardware:
         import openarm_can
