@@ -10,7 +10,7 @@ from telemetry import LABELS, ORDER, font
 
 class JogPanel:
     width = 370
-    minimum_height = 760
+    minimum_height = 850
 
     def __init__(self, controls):
         self.controls = controls
@@ -36,12 +36,20 @@ class JogPanel:
         self.regions.extend([
             ('ready',(18,515,180,549)),('strike',(190,515,352,549)),
             ('load',(18,558,180,588)),('edit',(190,558,352,588)),
-            ('test',(18,598,180,636)),('stop',(190,598,352,636))])
+            ('test',(18,598,180,636)),('stop',(190,598,352,636)),
+            ('publish',(18,646,352,680)),
+            ('show_demo',(18,690,180,724)),('show_original',(190,690,352,724))])
 
     def enabled(self, action):
         running = bool(self.session.routine and not self.session.routine.finished)
         if running:
             return action == 'stop'
+        if action == 'publish':
+            try:
+                self.session.store.get(self.session.arm,self.session.drum)
+            except (ValueError, KeyError):
+                return False
+            return self.session.drum != 'kick'
         if action == 'stop':
             return False
         if action.startswith(('slider_','minus_','plus_')):
@@ -60,6 +68,8 @@ class JogPanel:
             offset = 1 if action == 'drum_next' else -1
             drum = ORDER[(ORDER.index(session.drum)+offset) % len(ORDER)]
             session.command({'action':'select','arm':session.arm,'drum':drum})
+        elif action in ('publish','show_demo','show_original'):
+            session.command({'action':action})
         elif action.startswith('step_'):
             controls.step_index = int(action[-1])
         elif action.startswith(('minus_','plus_')):
@@ -108,12 +118,14 @@ class JogPanel:
         draw.text((18,41),'Physical test running' if state['running'] else 'Pose preview | physics paused',font=font(12),fill=(100,212,200))
         titles = {'arm_left':'LEFT ARM','arm_right':'RIGHT ARM','drum_prev':'<','drum_next':'>',
                   'ready':'1. Save ready pose','strike':'2. Save J7 strike',
-                  'load':'Load ready','edit':'Edit ready pose','test':'3. Test one hit','stop':'Stop test'}
+                  'load':'Load latest saved','edit':'Edit ready pose','test':'3. Test one hit','stop':'Stop test',
+                  'publish':'4. Use saved pose in live demo',
+                  'show_demo':'Show demo ready','show_original':'Show original ready'}
         for action,rect in self.regions:
             if action.startswith(('slider_','minus_','plus_')):
                 continue
             active = action == 'arm_'+state['arm'] or action == f'step_{self.controls.step_index}'
-            fill = (28,85,77) if active or action in ('ready','strike','test') else (29,42,61)
+            fill = (28,85,77) if active or action in ('ready','strike','test','publish') else (29,42,61)
             if action=='stop':fill=(100,45,56)
             color = main if self.enabled(action) else (91,105,125)
             draw.rounded_rectangle(rect,radius=5,fill=fill,outline=(53,72,96))
@@ -138,14 +150,14 @@ class JogPanel:
             draw.ellipse((x-6,y,x+6,y+12),fill=color)
             draw.text((300,y-2),f'{value:+.1f}',font=font(12),fill=main if enabled else muted)
         draw.text((18,496),'J7 ONLY | arm held' if state['wrist_only'] else 'Angles in degrees | select either arm',font=font(12),fill=muted)
-        y = 648
+        y = 736
         for line in textwrap.wrap(state['notice'].replace('→','->'),width=48)[:3]:
             draw.text((18,y),line,font=font(12),fill=main);y+=16
         draw.text((18,y+5),f"Tip height {state['height_mm']:.1f} mm | offset {state['radial_mm']:.1f} mm",font=font(11),fill=muted)
         hit = state['hits'][-1] if state['hits'] else None
         text = 'No test hits yet' if not hit else f"{len(state['hits'])} hit(s) | {hit['peak_force_N']:.1f} N | {hit['normal_impulse_Ns']:.3f} N s"
         draw.text((18,y+24),text,font=font(13),fill=(100,212,200))
-        if self.height > 810:
-            draw.text((18,790),'Drag scene: orbit | right drag: pan',font=font(11),fill=muted)
-            draw.text((18,809),'Scroll: zoom | arrow keys: fine jog',font=font(11),fill=muted)
+        if self.height > 910:
+            draw.text((18,890),'Drag scene: orbit | right drag: pan',font=font(11),fill=muted)
+            draw.text((18,909),'Scroll: zoom | arrow keys: fine jog',font=font(11),fill=muted)
         return image

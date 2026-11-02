@@ -453,7 +453,7 @@ Focus the scene before using teaching shortcuts:
 On a Mac, hold **Fn/Globe** to send F8–F12 when the function row controls system
 features. **Fn+Left/Right** sends Home/End on compact keyboards.
 
-1. Select an arm and drum using the panel buttons or F8/F9. Each arm/drum has its own preset.
+1. Select an arm and drum using the panel buttons or F8/F9. Each drum has its own preset for its assigned arm. Selecting a drum automatically selects that arm.
 2. Drag the sliders or use arrow-key jogging to position the
    stick above the head. Jogging is a kinematic preview with physics paused.
    Only the selected arm's seven sliders are shown.
@@ -471,8 +471,12 @@ features. **Fn+Left/Right** sends Home/End on compact keyboards.
    other arm/drum combinations.
 
 Presets persist in `configs/taught_poses.json` as radians, keyed by `arm/drum`.
-They include starting/strike J7 angles and stroke/rebound durations (default
-90 ms / 650 ms). Robot/scene/contact configuration changes invalidate old
+They include starting/strike J7 angles. Taught playback calculates stroke and
+rebound durations from J7 travel, the URDF motor-speed limit (with 2% tracking
+headroom), and the per-drum strike acceleration setting in `configs/demo_motion.json`. Legacy
+saved duration fields are ignored. Contact starts rebound immediately; there is
+no fixed strike-time target. The old 2 m/s tip-speed stop does not apply to
+taught wrist strokes; force, penetration, joint, and solver checks remain active. Robot/scene/contact configuration changes invalidate old
 presets for playback; re-teach them against the new geometry. Existing presets
 are never replaced by sample poses during setup or tests.
 
@@ -495,6 +499,46 @@ The automatic snare demo (`--strike` without `--preset`) continues to use its
 existing generated pose. Standalone preset playback starts at ready. For live transfers between the
 provisional drum poses, use the drum-button demo below.
 
+### Independent arm assignments
+
+The right arm owns **right cymbal, floor tom, and right rack tom**. The left arm
+owns **snare, left rack tom, hi-hat, and left cymbal**. Teaching and playback
+reject presets assigned to the wrong arm. Switching arms selects a drum owned
+by that arm; selecting a drum automatically selects its owner.
+
+Each saved preset contains only that arm's seven joints. Each arm has its own
+queue and controller: both can transfer and strike simultaneously. An idle arm
+holds its current position rather than requesting a ready pose or returning to park. Collision checks still account for both arms.
+Preview buttons likewise change only the selected drum's arm.
+
+### Compare saved, active demo, and original ready positions
+
+In teaching mode, select a drum and use:
+
+- **Load latest saved** (Home): reload the latest taught ready pose from disk for
+  the selected arm/drum, including saves from another teaching window.
+- **Show demo ready**: show the ready pose currently in `demo_poses.json`, using
+  that drum's assigned arm while leaving the other arm at its current pose.
+  Restart an already-open live demo to pick up changes to this file.
+- **Show original ready**: show the original generated ready pose retained in
+  `original_demo_poses.json`, even after publishing a replacement demo preset.
+
+These buttons instantly place the simulation in a paused preview; they do not
+strike or animate a transfer. Showing demo/original poses does not change saved
+presets. Click **Save ready pose** to start teaching from a preview; **Test one
+hit** and **Use saved pose in live demo** still use your saved taught preset.
+
+### Use a taught pose in the live demo
+
+After saving ready and the J7 strike angle, test the hit, then click
+**4. Use saved pose in live demo** in the teaching panel. The button copies the
+complete saved preset into `configs/demo_poses.json`, replacing the selected
+head's previous preset while preserving the fixed arm assignment and other drums. It checks
+the saved wrist arc before writing; incomplete presets cannot be published.
+Unsaved slider changes are not included. Restart `run_demo.py` to load the update.
+Regenerating demo poses replaces these published presets; the original taught
+poses remain in `configs/taught_poses.json` and can be published again.
+
 ## Live drum-button demo
 
 Run a separate native demo window with clickable drum buttons:
@@ -505,9 +549,11 @@ python projects/opendrummer_playground/scripts/run_demo.py
 
 `mjpython` also works in the shared Mac environment. Click a head to plan a clear
 path from the current pose, move the arm to its provisional ready position, hit
-with J7 only, and rebound. Click while busy to queue up to eight more requests.
-**Stop / clear queue** (or Space) cancels queued work and holds the current arm
-positions. Keys 1–8 correspond to the displayed drum buttons. The hit readout and
+with J7 only, and rebound. Click while busy to queue up to eight more requests **per arm**. Left and right
+queues execute concurrently; clicks within each arm retain their order.
+**Stop / clear queue** (or Space) cancels both queues and holds the current arm
+positions. A physical limit/contact failure also stops both arms. The panel shows
+each arm's phase and pending count separately. Keys 1–8 correspond to the displayed drum buttons. The hit readout and
 head color flashes continue across successive button presses.
 
 Provisional poses in `configs/demo_poses.json` cover seven stick targets:
@@ -520,21 +566,22 @@ Provisional poses in `configs/demo_poses.json` cover seven stick targets:
 | Cymbal L | |
 
 The ready tip clearance is approximately 4 cm (5 cm on the snare). Each stored
-preset includes its J7 strike angle, 90 ms downstroke, rebound duration, and a
+preset includes its J7 strike angle, legacy timing fields (ignored by playback), and a
 physical simulation check. Some impact points are shifted toward the robot while
 remaining inside the selected head. These are provisional simulation poses.
 Your manually taught poses in `configs/taught_poses.json` are preserved; this
-live demo currently loads the generated demo file, while `run.py --strike
+live demo loads the demo file (including presets published from teaching), while `run.py --strike
 --preset ...` loads your taught file.
 
 The kick button is disabled: the current demo has two stick arms and no pedal
-controller. Between targets, the unused arm returns to its parked pose. A
+controller. Between targets, an idle arm holds its current pose; an arm with queued work
+continues its own action independently. A
 joint-space planner samples collision geometry along the transfer, then the
 controller follows the path through physics without resetting joints or time.
 Planning runs in the background so the window remains interactive. A planning
 failure or a force/contact/limit failure clears pending requests and displays
-why the action stopped. The impact stops remain 30 N and 2 m/s. Transfer travel has its own 4 m/s
-tip-speed stop and an 8 mm planning clearance (existing closer endpoint gaps
+why the action stopped. The impact force stop remains 30 N; wrist speed is governed by motor limits. Transfer travel uses motor limits without an extra Cartesian tip-speed cap,
+plus an 8 mm planning clearance (existing closer endpoint gaps
 are preserved).
 
 A seven-head continuous simulation run is available with:
@@ -561,14 +608,46 @@ poses. Rebuilding the preset file may take several minutes.
 `configs/demo_motion.json` sets `transfer_speed_fraction` to **1.0**. Planned
 travel between drum poses uses each joint's URDF motor-speed limit separately:
 J1–J2: **16.7547 rad/s**, J3–J4: **5.4454 rad/s**, J5–J7: **20.9439 rad/s**.
-These are ceilings. Cubic ramps respect provisional acceleration limits and
-synchronize the joints, so short moves and slower-axis-constrained moves can
-peak below 100%. A 2% command headroom helps the physical servo stay inside the
+These are ceilings. Transfers use cubic Hermite curves with shared waypoint velocities so the arm
+flows through intermediate poses. The full blended curve is collision-checked;
+blending is reduced, or stopped at waypoints if necessary, to retain clearance.
+Analytic velocity and acceleration extrema determine time scaling. Provisional
+acceleration limits and synchronized joints mean short moves can peak below 100%. A 2% command headroom helps the physical servo stay inside the
 speed ceiling; measured transfer speeds are checked during execution.
 
 The same config holds acceleration limits, transfer tip-speed stop, and planner
 clearance. Clearance is evaluated on a private collision model and does not
-modify physical geometry or impact forces. Stroke timing comes from each drum
-preset. The report records commanded and measured transfer speeds as fractions
-of the motor limits, along with transfer duration. Restart the demo after
+modify physical geometry or impact forces. Stroke and rebound timing are calculated from the saved wrist arc and the J7
+motor-speed and acceleration limits. The report records commanded and measured transfer speeds as fractions
+of the motor limits, individual peak speeds for all 14 joints, blend strength,
+and transfer duration. The 100% setting is a velocity ceiling, not a claim that
+every motor reaches its rated maximum or that motion is globally time-optimal. Restart the demo after
 changing motion settings.
+
+### Concurrent simulation and fast motion
+
+The live demo combines both arms' torque commands and steps the coupled MuJoCo
+model exactly once per timestep. Each arm's hit detector and tracking checks
+operate independently; shared physical contact failures stop both queues.
+
+Transfer acceleration ceilings are now 32 times the original provisional caps:
+`[192, 192, 320, 320, 960, 960, 960]` rad/s² per arm. URDF motor velocity and torque
+limits remain enforced. Wrist strikes use separate per-drum accelerations of
+120–150 rad/s² because impact penetration, rather than motor speed, constrains
+these saved arcs. Live playback starts the downstroke immediately when its transfer ends, with no
+ready-pose dwell. Recovery can end early once the arm settles. The background
+preflight simulates this same immediate transition.
+
+Before executing a request, a background simulation checks the full transfer,
+strike, and rebound. It tries the fast settings first and reduces transfer or
+strike acceleration separately if tracking, motor, collision, or impact checks
+fail. This adds preparation latency but lets easier paths execute faster.
+The report records `preflight_transfer_scale` and `preflight_strike_scale` in
+that action's motion settings. Predictions use a snapshot of the other arm;
+shared runtime contact and joint checks remain active as both arms move.
+
+These settings are the fastest tested candidates for the current saved poses,
+not a proof of globally minimum motion time or hardware operating limits. More
+aggressive trials exceeded motor speed or the existing 3 mm penetration stop.
+The stress validation covers forward, reverse, repeated, and shuffled requests,
+including overlapping left/right actions. Taught joint angles are unchanged.

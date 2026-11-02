@@ -5,17 +5,120 @@
       "arm": "left",
       "drum": "snare",
       "ready_rad": [
-        -0.5050268103613826,
-        0.13824320292967315,
-        0.34669672538407836,
-        1.5297226162709496,
-        0.0,
-        0.0,
-        -1.0733407025139665
+        -0.6961125277489144,
+        0.40813237222960325,
+        0.10626456878491614,
+        1.5445463365485337,
+        0.5612825965432963,
+        0.13968648961243016,
+        -0.3209875555167598
       ],
       "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
       "downstroke_seconds": 0.09,
-      "retract_seconds": 0.65
+      "retract_seconds": 0.65,
+      "strike_joint7_rad": -1.084515621682961
+    },
+    "left/rack_tom_left": {
+      "arm": "left",
+      "drum": "rack_tom_left",
+      "ready_rad": [
+        0.12322165118715081,
+        0.40813237222960325,
+        -0.39729237168296083,
+        1.5316955574589735,
+        0.1714630235684359,
+        0.13968648961243016,
+        -0.7836840553421787
+      ],
+      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "downstroke_seconds": 0.09,
+      "retract_seconds": 0.65,
+      "strike_joint7_rad": -1.4759120237430166
+    },
+    "left/cymbal_left": {
+      "arm": "left",
+      "drum": "cymbal_left",
+      "ready_rad": [
+        0.4036992362953911,
+        0.4331940534883323,
+        0.1264891157472067,
+        1.3951360336068435,
+        0.1714630235684359,
+        0.13968648961243016,
+        -1.0054684940642458
+      ],
+      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "downstroke_seconds": 0.09,
+      "retract_seconds": 0.65,
+      "strike_joint7_rad": -1.5674366684706706
+    },
+    "left/hi_hat": {
+      "arm": "left",
+      "drum": "hi_hat",
+      "ready_rad": [
+        0.8769918304818436,
+        0.8037108244380529,
+        0.3988006429818436,
+        0.35320979539106145,
+        -0.16693820967178757,
+        -0.05710863599860342,
+        -0.9777711483938548
+      ],
+      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "downstroke_seconds": 0.09,
+      "retract_seconds": 0.65,
+      "strike_joint7_rad": -1.570796
+    },
+    "right/rack_tom_right": {
+      "arm": "right",
+      "drum": "rack_tom_right",
+      "ready_rad": [
+        -0.23914527666724825,
+        0.0,
+        0.0,
+        1.3283226468880935,
+        0.0,
+        0.0,
+        0.9107901911662013
+      ],
+      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "downstroke_seconds": 0.09,
+      "retract_seconds": 0.65,
+      "strike_joint7_rad": 1.3959736449022349
+    },
+    "right/floor_tom": {
+      "arm": "right",
+      "drum": "floor_tom",
+      "ready_rad": [
+        0.17719863674057262,
+        -0.09489944415697738,
+        -0.6502020453910613,
+        1.3186179091524093,
+        -0.05950815851955311,
+        0.17753038765712295,
+        0.9382133056913408
+      ],
+      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "downstroke_seconds": 0.09,
+      "retract_seconds": 0.65,
+      "strike_joint7_rad": 1.570796
+    },
+    "right/cymbal_right": {
+      "arm": "right",
+      "drum": "cymbal_right",
+      "ready_rad": [
+        -1.4080862692039107,
+        -0.9460825030780665,
+        -0.27258575837988824,
+        0.0,
+        -0.05950900728577706,
+        0.17753077561921157,
+        0.8804876496159214
+      ],
+      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "downstroke_seconds": 0.09,
+      "retract_seconds": 0.65,
+      "strike_joint7_rad": 1.495450992842179
     }
   }
 }

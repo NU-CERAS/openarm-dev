@@ -1,350 +1,124 @@
 {
   "version": 1,
   "presets": {
-    "left/rack_tom_left": {
-      "arm": "left",
-      "drum": "rack_tom_left",
-      "ready_rad": [
-        -1.2024950659072697,
-        2.4908362282710304,
-        0.9727053203621682,
-        1.3507539540231872,
-        -1.530796,
-        -0.35507694355861624,
-        -1.221106051938675
-      ],
-      "strike_joint7_rad": -0.8281003958278647,
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
-      "downstroke_seconds": 0.09,
-      "retract_seconds": 0.4,
-      "source": "provisional generated pose; replace with a taught pose when desired",
-      "validation": {
-        "status": "PASS",
-        "failure": null,
-        "completed_strikes": 1,
-        "hit_count": 1,
-        "arm": "left",
-        "drum": "rack_tom_left",
-        "metrics": {
-          "peak_force_N": 26.411309299321026,
-          "max_penetration_m": 0.001830727190038432,
-          "peak_tip_speed_m_s": 1.6442115893351839,
-          "max_held_joint_command_change_rad": 0.0
-        },
-        "hits": [
-          {
-            "onset_time_s": 2.4739999999998386,
-            "peak_force_N": 26.411309299321026,
-            "normal_impulse_Ns": 0.15741366549769123,
-            "contact_duration_s": 0.028000000000000018,
-            "last_contact_time_s": 2.5009999999998356,
-            "confirmed_time_s": 2.4739999999998386,
-            "arm": "left",
-            "drum": "rack_tom_left",
-            "cycle": 1
-          }
-        ]
-      },
-      "impact_position_m": [
-        0.5055162035714286,
-        0.15427641428571426,
-        0.8218469464285714
-      ]
-    },
-    "right/rack_tom_right": {
-      "arm": "right",
-      "drum": "rack_tom_right",
-      "ready_rad": [
-        1.2291253842930423,
-        -2.3977818284002903,
-        -1.035327843326874,
-        1.4296131063835806,
-        1.530796,
-        0.4241572265596322,
-        1.213556210453556
-      ],
-      "strike_joint7_rad": 0.8315945135448128,
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
-      "downstroke_seconds": 0.09,
-      "retract_seconds": 0.4,
-      "source": "provisional generated pose; replace with a taught pose when desired",
-      "validation": {
-        "status": "PASS",
-        "failure": null,
-        "completed_strikes": 1,
-        "hit_count": 1,
-        "arm": "right",
-        "drum": "rack_tom_right",
-        "metrics": {
-          "peak_force_N": 24.728138408061657,
-          "max_penetration_m": 0.0017567258881378638,
-          "peak_tip_speed_m_s": 1.5978572130931044,
-          "max_held_joint_command_change_rad": 0.0
-        },
-        "hits": [
-          {
-            "onset_time_s": 2.4739999999998386,
-            "peak_force_N": 24.728138408061657,
-            "normal_impulse_Ns": 0.14879369355331928,
-            "contact_duration_s": 0.028000000000000018,
-            "last_contact_time_s": 2.5009999999998356,
-            "confirmed_time_s": 2.4739999999998386,
-            "arm": "right",
-            "drum": "rack_tom_right",
-            "cycle": 1
-          }
-        ]
-      },
-      "impact_position_m": [
-        0.49636317142857145,
-        -0.16183002857142856,
-        0.8217429642857143
-      ]
-    },
-    "right/floor_tom": {
-      "arm": "right",
-      "drum": "floor_tom",
-      "ready_rad": [
-        -0.5102739932829451,
-        -1.2663180548373218,
-        0.959128922445584,
-        1.1463359251058058,
-        1.4929889902259605,
-        0.44519224231916554,
-        1.3582092946754765
-      ],
-      "strike_joint7_rad": 1.0518161817894631,
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
-      "downstroke_seconds": 0.09,
-      "retract_seconds": 0.4,
-      "source": "provisional generated pose; replace with a taught pose when desired",
-      "validation": {
-        "status": "PASS",
-        "failure": null,
-        "completed_strikes": 1,
-        "hit_count": 1,
-        "arm": "right",
-        "drum": "floor_tom",
-        "metrics": {
-          "peak_force_N": 19.078803593277367,
-          "max_penetration_m": 0.0019315119911078463,
-          "peak_tip_speed_m_s": 1.2830137637204013,
-          "max_held_joint_command_change_rad": 0.0
-        },
-        "hits": [
-          {
-            "onset_time_s": 2.4749999999998384,
-            "peak_force_N": 19.078803593277367,
-            "normal_impulse_Ns": 0.12853687085502746,
-            "contact_duration_s": 0.02000000000000001,
-            "last_contact_time_s": 2.4939999999998363,
-            "confirmed_time_s": 2.4749999999998384,
-            "arm": "right",
-            "drum": "floor_tom",
-            "cycle": 1
-          }
-        ]
-      },
-      "impact_position_m": [
-        0.34742877142857154,
-        -0.45649739999999994,
-        0.6367775785714285
-      ]
-    },
-    "left/hi_hat": {
-      "arm": "left",
-      "drum": "hi_hat",
-      "ready_rad": [
-        1.531069839065275,
-        1.063212929520765,
-        -1.5196710952749484,
-        0.23335170265802863,
-        -0.9572803441346366,
-        -0.5217180646775629,
-        -1.3506412179823433
-      ],
-      "strike_joint7_rad": -1.05656431093129,
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
-      "downstroke_seconds": 0.09,
-      "retract_seconds": 0.4,
-      "source": "provisional generated pose; replace with a taught pose when desired",
-      "validation": {
-        "status": "PASS",
-        "failure": null,
-        "completed_strikes": 1,
-        "hit_count": 1,
-        "arm": "left",
-        "drum": "hi_hat",
-        "metrics": {
-          "peak_force_N": 18.823400248839075,
-          "max_penetration_m": 0.0020564912278646617,
-          "peak_tip_speed_m_s": 1.2333007061968033,
-          "max_held_joint_command_change_rad": 0.0
-        },
-        "hits": [
-          {
-            "onset_time_s": 2.4739999999998386,
-            "peak_force_N": 18.823400248839075,
-            "normal_impulse_Ns": 0.09071318181011519,
-            "contact_duration_s": 0.035000000000000024,
-            "last_contact_time_s": 2.507999999999835,
-            "confirmed_time_s": 2.4739999999998386,
-            "arm": "left",
-            "drum": "hi_hat",
-            "cycle": 1
-          }
-        ]
-      },
-      "impact_position_m": [
-        0.4035971759523619,
-        0.652767514188498,
-        0.86366358339416
-      ]
-    },
     "left/cymbal_left": {
       "arm": "left",
       "drum": "cymbal_left",
       "ready_rad": [
-        -0.9035489909215212,
-        2.7232586510493957,
-        -0.24215545523336443,
-        0.5746560218848855,
-        -0.0094054997333297,
-        -0.21615492187225063,
-        -1.2120120130717371
+        0.4036992362953911,
+        0.4331940534883323,
+        0.1264891157472067,
+        1.3951360336068435,
+        0.1714630235684359,
+        0.13968648961243016,
+        -1.0054684940642458
       ],
-      "strike_joint7_rad": -0.831208606492107,
       "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
       "downstroke_seconds": 0.09,
-      "retract_seconds": 0.4,
-      "source": "provisional generated pose; replace with a taught pose when desired",
-      "validation": {
-        "status": "PASS",
-        "failure": null,
-        "completed_strikes": 1,
-        "hit_count": 1,
-        "arm": "left",
-        "drum": "cymbal_left",
-        "metrics": {
-          "peak_force_N": 25.25559563061129,
-          "max_penetration_m": 0.001729313805120709,
-          "peak_tip_speed_m_s": 1.5947997928767519,
-          "max_held_joint_command_change_rad": 0.0
-        },
-        "hits": [
-          {
-            "onset_time_s": 2.4739999999998386,
-            "peak_force_N": 25.25559563061129,
-            "normal_impulse_Ns": 0.10790748726227263,
-            "contact_duration_s": 0.02000000000000001,
-            "last_contact_time_s": 2.4929999999998365,
-            "confirmed_time_s": 2.4739999999998386,
-            "arm": "left",
-            "drum": "cymbal_left",
-            "cycle": 1
-          }
-        ]
-      },
-      "impact_position_m": [
-        0.5349502974996709,
-        0.42219583042865744,
-        0.9875796465221228
-      ]
-    },
-    "right/cymbal_right": {
-      "arm": "right",
-      "drum": "cymbal_right",
-      "ready_rad": [
-        -1.715245326834738,
-        -0.9642118065634753,
-        1.3146683036792943,
-        0.33488634325408395,
-        1.530796,
-        0.5353389763369948,
-        1.1427725456974342
-      ],
-      "strike_joint7_rad": 0.8574086003061384,
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
-      "downstroke_seconds": 0.09,
-      "retract_seconds": 0.4,
-      "source": "provisional generated pose; replace with a taught pose when desired",
-      "validation": {
-        "status": "PASS",
-        "failure": null,
-        "completed_strikes": 1,
-        "hit_count": 1,
-        "arm": "right",
-        "drum": "cymbal_right",
-        "metrics": {
-          "peak_force_N": 19.46642086300206,
-          "max_penetration_m": 0.00225842071343426,
-          "peak_tip_speed_m_s": 1.1978581897387093,
-          "max_held_joint_command_change_rad": 0.0
-        },
-        "hits": [
-          {
-            "onset_time_s": 2.4749999999998384,
-            "peak_force_N": 19.46642086300206,
-            "normal_impulse_Ns": 0.09217038561555417,
-            "contact_duration_s": 0.027000000000000017,
-            "last_contact_time_s": 2.5009999999998356,
-            "confirmed_time_s": 2.4749999999998384,
-            "arm": "right",
-            "drum": "cymbal_right",
-            "cycle": 1
-          }
-        ]
-      },
-      "impact_position_m": [
-        0.4669089474065633,
-        -0.5920258113235121,
-        0.9426554884983912
-      ]
+      "retract_seconds": 0.65,
+      "strike_joint7_rad": -1.5674366684706706
     },
     "left/snare": {
       "arm": "left",
       "drum": "snare",
       "ready_rad": [
         -0.6961125277489144,
-        1.095092885258405,
-        0.43813858322371607,
-        1.455761196484837,
-        -1.540796,
-        -0.06451958242096902,
-        -1.251866334335685
+        0.40813237222960325,
+        0.10626456878491614,
+        1.5445463365485337,
+        0.5612825965432963,
+        0.13968648961243016,
+        -0.3209875555167598
       ],
-      "strike_joint7_rad": -0.8194251880373014,
       "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
       "downstroke_seconds": 0.09,
       "retract_seconds": 0.65,
-      "source": "provisional validated snare pose",
-      "validation": {
-        "status": "PASS",
-        "failure": null,
-        "completed_strikes": 1,
-        "hit_count": 1,
-        "arm": "left",
-        "drum": "snare",
-        "metrics": {
-          "peak_force_N": 25.147953981077848,
-          "max_penetration_m": 0.002588225616761629,
-          "peak_tip_speed_m_s": 1.8107689838395733,
-          "max_held_joint_command_change_rad": 0.0
-        },
-        "hits": [
-          {
-            "onset_time_s": 2.4739999999998386,
-            "peak_force_N": 25.147953981077848,
-            "normal_impulse_Ns": 0.20437492426849665,
-            "contact_duration_s": 0.02900000000000002,
-            "last_contact_time_s": 2.5019999999998355,
-            "confirmed_time_s": 2.4739999999998386,
-            "arm": "left",
-            "drum": "snare",
-            "cycle": 1
-          }
-        ]
-      }
+      "strike_joint7_rad": -1.084515621682961
+    },
+    "left/rack_tom_left": {
+      "arm": "left",
+      "drum": "rack_tom_left",
+      "ready_rad": [
+        0.12322165118715081,
+        0.40813237222960325,
+        -0.39729237168296083,
+        1.5316955574589735,
+        0.1714630235684359,
+        0.13968648961243016,
+        -0.7836840553421787
+      ],
+      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "downstroke_seconds": 0.09,
+      "retract_seconds": 0.65,
+      "strike_joint7_rad": -1.4759120237430166
+    },
+    "left/hi_hat": {
+      "arm": "left",
+      "drum": "hi_hat",
+      "ready_rad": [
+        0.8769918304818436,
+        0.8037108244380529,
+        0.3988006429818436,
+        0.35320979539106145,
+        -0.16693820967178757,
+        -0.05710863599860342,
+        -0.9777711483938548
+      ],
+      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "downstroke_seconds": 0.09,
+      "retract_seconds": 0.65,
+      "strike_joint7_rad": -1.570796
+    },
+    "right/rack_tom_right": {
+      "arm": "right",
+      "drum": "rack_tom_right",
+      "ready_rad": [
+        -0.23914527666724825,
+        0.0,
+        0.0,
+        1.3283226468880935,
+        0.0,
+        0.0,
+        0.9107901911662013
+      ],
+      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "downstroke_seconds": 0.09,
+      "retract_seconds": 0.65,
+      "strike_joint7_rad": 1.3959736449022349
+    },
+    "right/floor_tom": {
+      "arm": "right",
+      "drum": "floor_tom",
+      "ready_rad": [
+        0.17719863674057262,
+        -0.09489944415697738,
+        -0.6502020453910613,
+        1.3186179091524093,
+        -0.05950815851955311,
+        0.17753038765712295,
+        0.9382133056913408
+      ],
+      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "downstroke_seconds": 0.09,
+      "retract_seconds": 0.65,
+      "strike_joint7_rad": 1.570796
+    },
+    "right/cymbal_right": {
+      "arm": "right",
+      "drum": "cymbal_right",
+      "ready_rad": [
+        -1.4080862692039107,
+        -0.9460825030780665,
+        -0.27258575837988824,
+        0.0,
+        -0.05950900728577706,
+        0.17753077561921157,
+        0.8804876496159214
+      ],
+      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "downstroke_seconds": 0.09,
+      "retract_seconds": 0.65,
+      "strike_joint7_rad": 1.495450992842179
     }
   },
   "unavailable": {
