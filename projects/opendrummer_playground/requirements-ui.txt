@@ -1,0 +1,2 @@
+# Already present in the shared Mac Pixi environment; for other Python installs:
+pillow>=11

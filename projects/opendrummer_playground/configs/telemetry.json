@@ -1,0 +1,8 @@
+{
+  "flash_seconds": 0.8,
+  "blue_below_N": 5.0,
+  "red_at_N": 20.0,
+  "force_bar_max_N": 30.0,
+  "panel_width_fraction": 0.28,
+  "notes": "Flash bands indicate measured simulated peak force, not calibrated loudness. Readout measures stick contacts with playing-surface proxies."
+}

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "presets": {
+    "left/snare": {
+      "arm": "left",
+      "drum": "snare",
+      "ready_rad": [
+        -0.5050268103613826,
+        0.13824320292967315,
+        0.34669672538407836,
+        1.5297226162709496,
+        0.0,
+        0.0,
+        -1.0733407025139665
+      ],
+      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "downstroke_seconds": 0.09,
+      "retract_seconds": 0.65
+    }
+  }
+}

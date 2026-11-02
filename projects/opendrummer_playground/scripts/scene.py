@@ -185,6 +185,10 @@ def build_scene(collisions=True):
                       size=f'{radius*.9} .001', rgba='.2 .7 1 .12', group='3')
         ET.SubElement(world, 'site', name=f'{name}_target', pos=' '.join(map(str, position)),
                       size='.006', rgba='1 .8 .1 1', group='3')
+        # Separate visual-only highlight: independent of target/debug visibility.
+        ET.SubElement(world, 'site', name=f'{name}_hit_flash', type='cylinder',
+                      pos=' '.join(map(str, position+normal*.004)), quat=' '.join(map(str, quat)),
+                      size=f'{radius*.98} .0005', rgba='0 0 0 0', group='5')
         ET.SubElement(world, 'site', name=f'{name}_normal', type='capsule',
                       fromto=' '.join(map(str, [*position, *(position+normal*.07)])), size='.0015', rgba='1 .8 .1 1', group='3')
         surfaces.append({'name': name, 'kind': spec['kind'], 'center': position.tolist(),
@@ -212,7 +216,8 @@ def build_scene(collisions=True):
     return model, robot_report, report
 
 
-def solve_approach(model, robot_report, scene_report, side, target_name, height=None, seed=None):
+def solve_approach(model, robot_report, scene_report, side, target_name, height=None, seed=None, wrist_angle=None, joint_margin=.001,
+                   tip_direction=None, attempts=16, iterations=250):
     """Joint-limited static IK only; does not plan or certify a clear path."""
     target = next(s for s in scene_report['surfaces'] if s['name'] == target_name)
     if target['kind'] == 'kick':
@@ -221,22 +226,29 @@ def solve_approach(model, robot_report, scene_report, side, target_name, height=
         height = scene_report['config']['approach_height_m']
     position = np.array(target['center'])+np.array(target['normal'])*height
     # A forward/downward stick allows a natural wrist pose above the head.
-    direction = np.array([.65, 0, 0])-np.array(target['normal'])
+    direction = np.array([.65, 0, 0])-np.array(target['normal']) if tip_direction is None else np.array(tip_direction, dtype=float)
     direction /= np.linalg.norm(direction)
     controller = HoldController(model, robot_report)
     selected = np.arange(7) if side == 'left' else np.arange(7, 14)
+    wrist = int(selected[-1])
+    if wrist_angle is not None:
+        if not controller.bounds[wrist, 0] <= wrist_angle <= controller.bounds[wrist, 1]:
+            raise ValueError('Requested wrist angle exceeds joint limits')
+        selected = selected[:-1]
     qids, vids = controller.q[selected], controller.v[selected]
     sid = model.site(f'{side}_stick_tip').id
     rng = np.random.default_rng(9)
     best = None
-    for attempt in range(16):
+    for attempt in range(attempts):
         data = mujoco.MjData(model)
         controller.reset(data)
         if attempt == 0 and seed is not None:
             data.qpos[controller.q] = seed
         elif attempt:
             data.qpos[qids] = rng.uniform(controller.bounds[selected, 0], controller.bounds[selected, 1])
-        for _ in range(250):
+        if wrist_angle is not None:
+            data.qpos[controller.q[wrist]] = wrist_angle
+        for _ in range(iterations):
             mujoco.mj_forward(model, data)
             z = data.site_xmat[sid].reshape(3, 3)[:, 2]
             error = np.r_[position-data.site_xpos[sid], .18*(direction-z)]
@@ -252,7 +264,7 @@ def solve_approach(model, robot_report, scene_report, side, target_name, height=
             jacobian = np.vstack([jp[:, vids], -.18*skew@jr[:, vids]])
             delta = jacobian.T @ np.linalg.solve(jacobian@jacobian.T+.0002*np.eye(6), error)
             data.qpos[qids] = np.clip(data.qpos[qids]+np.clip(delta, -.12, .12),
-                                      controller.bounds[selected, 0]+.001, controller.bounds[selected, 1]-.001)
+                                      controller.bounds[selected, 0]+joint_margin, controller.bounds[selected, 1]-joint_margin)
         if best[2] < .0001 and best[3] < .1:
             break
     return {'arm': side, 'target': target_name, 'approach_position': position.tolist(),

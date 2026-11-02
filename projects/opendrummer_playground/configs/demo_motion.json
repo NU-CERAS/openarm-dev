@@ -1,0 +1,15 @@
+{
+  "transfer_speed_fraction": 1.0,
+  "transfer_acceleration_rad_s2": [
+    6.0,
+    6.0,
+    10.0,
+    10.0,
+    30.0,
+    30.0,
+    30.0
+  ],
+  "transfer_tip_speed_stop_m_s": 4.0,
+  "notes": "Transfer joint speed ceilings are 100% of each URDF motor velocity limit. Synchronized moves ramp up/down within provisional simulation acceleration limits. J7 hit timing is defined by each drum preset.",
+  "transfer_clearance_m": 0.008
+}
