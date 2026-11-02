@@ -32,6 +32,7 @@ def validate():
         assert all(r['metrics']['max_transfer_command_motor_fraction']<=fraction+1e-8 for r in demo.reports)
         assert all(r['metrics']['max_transfer_actual_motor_fraction']<=fraction+.001 for r in demo.reports)
         assert len(demo.telemetry.events)==len(drums)
+        assert demo.concurrent_steps>0,'Arms never ran concurrently'
         print(f'PASS: {len(drums)} continuous drum transfers and {len(drums)} J7-only hits.')
     finally:demo.close()
     doc=json.loads(destination.read_text())

@@ -8,8 +8,17 @@ import numpy as np
 
 from openarm_drummer.model import CONFIG, OUTPUT, SOURCE, HoldController
 from openarm_drummer.strike import HitDetector, STRIKE_CONFIG, smooth
+from openarm_drummer.transfers import TransferTrajectory, clearance_checker
 
 PRESETS = CONFIG.with_name('taught_poses.json')
+DRUM_ARMS = {'snare':'left', 'rack_tom_left':'left', 'hi_hat':'left',
+             'cymbal_left':'left', 'rack_tom_right':'right', 'floor_tom':'right',
+             'cymbal_right':'right'}
+
+
+def require_drum_arm(arm, drum):
+    if DRUM_ARMS.get(drum) != arm:
+        raise ValueError(f'{drum} belongs to {DRUM_ARMS.get(drum, "no stick")} arm')
 
 
 def scene_signature(scene):
@@ -42,6 +51,7 @@ class PoseStore:
         return q
 
     def get(self, arm, drum, complete=True):
+        require_drum_arm(arm, drum)
         item = self.document['presets'].get(self.key(arm, drum))
         if item is None:
             raise ValueError('No saved ready pose for this arm/drum')
@@ -65,6 +75,7 @@ class PoseStore:
         temporary.replace(self.path)
 
     def save_ready(self, arm, drum, pose):
+        require_drum_arm(arm, drum)
         q = self.validate(arm, pose)
         self.document['presets'][self.key(arm, drum)] = {
             'arm': arm, 'drum': drum, 'ready_rad': q.tolist(), 'scene_signature': self.signature,
@@ -86,16 +97,12 @@ class PoseStore:
 
 class TaughtStrike:
     """Smooth full-arm approach followed by J7-only stroke and rebound."""
-    def __init__(self, model, robot, scene, preset, count=1, initial=None, approach_path=None, ready_pose=None, transfer_motion=None):
+    def __init__(self, model, robot, scene, preset, count=1, initial=None, approach_path=None, ready_pose=None, transfer_motion=None, concurrent=False):
         if type(count) is not int or not 1 <= count <= 100:
             raise ValueError('Strike count must be 1–100')
         self.model, self.controller = model, HoldController(model, robot)
+        self.concurrent = concurrent
         self.cfg = json.loads(STRIKE_CONFIG.read_text())
-        for name in ('downstroke_seconds', 'retract_seconds'):
-            value = float(preset[name])
-            if not np.isfinite(value) or value <= 0:
-                raise ValueError('Invalid saved stroke duration')
-            self.cfg[name] = value
         self.side, self.target = preset['arm'], preset['drum']
         self.selected = np.arange(7) if self.side == 'left' else np.arange(7, 14)
         self.wrist = int(self.selected[-1])
@@ -110,11 +117,17 @@ class TaughtStrike:
             self.initial = self.ready.copy()
         self.bottom = self.ready.copy()
         self.bottom[self.wrist] = preset['strike_joint7_rad']
+        checked=self.selected if self.concurrent else np.arange(14)
         for pose in (self.initial, self.ready, self.bottom):
-            if pose.shape != (14,) or not np.isfinite(pose).all() or np.any(pose < c.bounds[:,0]) or np.any(pose > c.bounds[:,1]):
+            if pose.shape != (14,) or not np.isfinite(pose).all() or np.any(pose[checked] < c.bounds[checked,0]-.001) or np.any(pose[checked] > c.bounds[checked,1]+.001):
                 raise ValueError('Saved pose exceeds joint limits')
-        if 1.5*abs(self.bottom[self.wrist]-self.ready[self.wrist])/self.cfg['downstroke_seconds'] > c.velocity[self.wrist]:
-            raise ValueError('Saved stroke exceeds J7 velocity limit; reduce travel or increase duration')
+        motion = transfer_motion or json.loads(CONFIG.with_name('demo_motion.json').read_text())
+        self.wrist_acceleration = float(motion.get('strike_acceleration_by_drum_rad_s2',{}).get(self.target,
+            motion.get('strike_acceleration_rad_s2',motion['transfer_acceleration_rad_s2'][6])))
+        if not np.isfinite(self.wrist_acceleration) or self.wrist_acceleration <= 0:
+            raise ValueError('Invalid J7 acceleration limit')
+        self.cfg['downstroke_seconds'] = self.wrist_duration(self.ready, self.bottom)
+        self.cfg['retract_seconds'] = self.wrist_duration(self.bottom, self.ready)
         surface = next(s for s in scene['surfaces'] if s['name'] == self.target)
         self.center, self.normal = np.array(surface['center']), np.array(surface['normal'])
         self.radius = surface['radius']
@@ -132,6 +145,8 @@ class TaughtStrike:
             if np.linalg.norm(delta-height*self.normal) > self.radius-.005:
                 raise ValueError('Saved wrist arc leaves the selected drum strike area')
             for contact in self.probe.contact:
+                if self.concurrent and not any((model.geom(g).name or '').startswith(self.side+'_') for g in (contact.geom1,contact.geom2)):
+                    continue
                 intended = self.head in (contact.geom1, contact.geom2) and any(
                     model.geom(g).name.startswith(self.side+'_stick_') for g in (contact.geom1,contact.geom2))
                 if contact.dist < -1e-5 and not (intended and height < .005):
@@ -154,7 +169,7 @@ class TaughtStrike:
             self.transfer_motion = json.loads(CONFIG.with_name('demo_motion.json').read_text())
         self.approach_path = np.array(approach_path if approach_path is not None else [self.initial,self.ready],dtype=float)
         if (self.approach_path.ndim!=2 or self.approach_path.shape[1]!=14 or len(self.approach_path)<2 or not np.isfinite(self.approach_path).all()
-            or np.any(self.approach_path<c.bounds[:,0]) or np.any(self.approach_path>c.bounds[:,1])
+            or np.any(self.approach_path[:,checked]<c.bounds[checked,0]-.001) or np.any(self.approach_path[:,checked]>c.bounds[checked,1]+.001)
             or not np.allclose(self.approach_path[0],self.initial) or not np.allclose(self.approach_path[-1],self.ready)):
             raise ValueError('Approach path must connect current pose to ready pose')
         if approach_path is not None:
@@ -163,17 +178,24 @@ class TaughtStrike:
             if not np.isfinite(fraction) or not 0 < fraction <= 1 or acceleration.shape!=(14,) or not np.isfinite(acceleration).all() or np.any(acceleration<=0):
                 raise ValueError('Invalid transfer speed fraction or acceleration limits')
             self.transfer_velocity = fraction*c.velocity
-            distance=np.abs(np.diff(self.approach_path,axis=0))
-            # Cubic smoothstep peaks at 1.5*dq/T, acceleration at 6*dq/T^2.
-            # Leave 2% velocity headroom for the physical servo to track the cap.
-            velocity_time=np.max(1.5*distance/(.98*self.transfer_velocity),axis=1)
-            acceleration_time=np.max(np.sqrt(6*distance/acceleration),axis=1)
-            self.approach_durations=np.maximum(.1,np.maximum(velocity_time,acceleration_time))
+            self.transfer_trajectory=TransferTrajectory(
+                self.approach_path,.98*self.transfer_velocity,acceleration,
+                clearance_checker(model,c,self.initial,self.ready,self.side if self.concurrent else None))
+            self.approach_durations=self.transfer_trajectory.durations
+            self.transfer_command_peak=np.zeros(14)
+            self.transfer_actual_peak=np.zeros(14)
             self.metrics.update(max_transfer_command_motor_fraction=0.,max_transfer_actual_motor_fraction=0.)
         else:
             self.transfer_velocity=c.velocity
             self.approach_durations=np.array([2.])
         self.approach_ends = np.cumsum(self.approach_durations)
+
+    def wrist_duration(self, start, end):
+        """Fastest cubic ramp within J7 velocity and configured acceleration caps."""
+        distance = abs(end[self.wrist]-start[self.wrist])
+        return max(self.model.opt.timestep,
+                   1.5*distance/(.98*self.controller.velocity[self.wrist]),
+                   np.sqrt(6*distance/self.wrist_acceleration))
 
     def start_live(self, data):
         """Continue from the current simulation state, without resetting time or joints."""
@@ -193,34 +215,40 @@ class TaughtStrike:
         if state == 'retract':
             self.retract_start = self.ready.copy()
             self.retract_start[self.wrist] = data.qpos[self.controller.q[self.wrist]]
+            self.cfg['retract_seconds'] = self.wrist_duration(self.retract_start, self.ready)
 
     def abort(self, message):
         self.failure, self.finished = message, True
 
-    def step(self, data):
+    def prepare(self, data):
         if self.finished:
             return
         cfg, c = self.cfg, self.controller
         elapsed = data.time-self.state_start
-        transfer_active = self.state=='approach' and self.transfer_motion is not None
         if self.state == 'approach' and elapsed >= self.approach_ends[-1]:
-            self.transition('ready',data)
-        elif self.state == 'ready' and elapsed >= cfg['ready_seconds']:
-            self.transition('downstroke',data)
+            self.transition('downstroke' if self.concurrent else 'ready',data)
+        elif self.state == 'ready':
+            if self.concurrent or elapsed >= cfg['ready_seconds']:
+                self.transition('downstroke',data)
         elif self.state == 'downstroke' and elapsed >= cfg['downstroke_seconds']+cfg['contact_timeout_seconds']:
             self.abort('Missed strike: no qualified contact'); return
         elif self.state == 'retract' and elapsed >= cfg['retract_seconds']:
             self.transition('recovery',data)
-        elif self.state == 'recovery' and elapsed >= cfg['recovery_seconds']:
-            if len(self.detector.events)-self.cycle_hit_start != 1 or not self.detector.armed or np.max(np.abs(data.qvel[c.v])) > .08:
+        elif self.state == 'recovery' and (
+            elapsed >= cfg['recovery_seconds'] or (self.concurrent and elapsed >= cfg['rearm_seconds']
+            and len(self.detector.events)-self.cycle_hit_start == 1 and self.detector.armed
+            and np.max(np.abs(data.qvel[c.v[self.selected]])) <= .08)):
+            if len(self.detector.events)-self.cycle_hit_start != 1 or not self.detector.armed or np.max(np.abs(data.qvel[c.v[self.selected if self.concurrent else np.arange(14)]])) > .08:
                 self.abort('Recovery failed: extra/missing hit, motion, or insufficient clearance'); return
             self.completed += 1
             if self.completed == self.count:
                 self.finished = True; self.state = 'complete'; return
             self.cycle += 1
             self.cycle_hit_start = len(self.detector.events)
-            self.transition('ready',data)
+            self.transition('downstroke' if self.concurrent else 'ready',data)
+        transfer_active = self.state=='approach' and self.transfer_motion is not None
         elapsed = data.time-self.state_start
+        transfer_elapsed = elapsed
         target, velocity = self.ready.copy(), np.zeros(14)
         if self.state in ('approach','downstroke','retract'):
             if self.state == 'approach':
@@ -233,6 +261,8 @@ class TaughtStrike:
                 start,end,duration = self.retract_start,self.ready,cfg['retract_seconds']
             blend,rate = smooth(elapsed/duration)
             target,velocity = start+(end-start)*blend,(end-start)*rate/duration
+        if self.state == 'approach' and self.transfer_motion is not None:
+            target,velocity=self.transfer_trajectory.sample(transfer_elapsed)
         if np.any(np.abs(velocity) > c.velocity):
             self.abort('Commanded velocity limit exceeded'); return
         if transfer_active and np.any(np.abs(velocity)>self.transfer_velocity+1e-8):
@@ -241,18 +271,31 @@ class TaughtStrike:
         if self.state == 'retract' and elapsed < cfg['compliance_seconds']:
             kp[self.wrist] *= cfg['contact_kp_multiplier']
         torque = kp*(target-data.qpos[c.q])+c.kd*(velocity-data.qvel[c.v])+data.qfrc_bias[c.v]
-        data.ctrl[c.a] = np.clip(torque,-c.effort,c.effort)
-        jac = np.zeros((3,self.model.nv))
-        mujoco.mj_jacSite(self.model,data,jac,None,self.sid)
-        speed = float(np.linalg.norm(jac@data.qvel))
+        self.step_context=(target,velocity,transfer_active)
+        return np.clip(torque,-c.effort,c.effort)
+
+    def step(self, data):
+        torque=self.prepare(data)
+        if torque is None:return
+        data.ctrl[self.controller.a]=torque
         mujoco.mj_step(self.model,data)
+        self.observe(data)
+
+    def observe(self, data, allowed_contacts=()):
+        if self.finished:return
+        cfg,c=self.cfg,self.controller
+        target,velocity,transfer_active=self.step_context
+        checked=self.selected if self.concurrent else np.arange(14)
+        jac=np.zeros((3,self.model.nv))
+        mujoco.mj_jacSite(self.model,data,jac,None,self.sid)
+        speed=float(np.linalg.norm(jac@data.qvel))
         force,penetration = 0.,0.
         for index,contact in enumerate(data.contact):
             wrench = np.zeros(6); mujoco.mj_contactForce(self.model,data,index,wrench)
             value = max(0.,float(wrench[0]))
             if {contact.geom1,contact.geom2} == {self.tip,self.head}:
                 force += value; penetration = max(penetration,-float(contact.dist))
-            elif value > .05:
+            elif value > .05 and frozenset((contact.geom1,contact.geom2)) not in allowed_contacts:
                 self.abort('Unexpected contact: '+self.model.geom(contact.geom1).name+' / '+self.model.geom(contact.geom2).name)
         height = float((data.site_xpos[self.sid]-self.center)@self.normal)
         event = self.detector.update(float(data.time),force,height,self.model.opt.timestep)
@@ -266,20 +309,26 @@ class TaughtStrike:
         self.metrics['max_penetration_m'] = max(self.metrics['max_penetration_m'],penetration)
         self.metrics['peak_tip_speed_m_s'] = max(self.metrics['peak_tip_speed_m_s'],speed)
         if transfer_active:
+            self.transfer_command_peak=np.maximum(self.transfer_command_peak,np.abs(velocity))
+            self.transfer_actual_peak=np.maximum(self.transfer_actual_peak,np.abs(data.qvel[c.v])*np.isin(np.arange(14),checked))
             command_fraction=float(np.max(np.abs(velocity)/c.velocity))
-            actual_fraction=float(np.max(np.abs(data.qvel[c.v])/c.velocity))
+            actual_fraction=float(np.max(np.abs(data.qvel[c.v[checked]])/c.velocity[checked]))
             self.metrics['max_transfer_command_motor_fraction']=max(self.metrics['max_transfer_command_motor_fraction'],command_fraction)
             self.metrics['max_transfer_actual_motor_fraction']=max(self.metrics['max_transfer_actual_motor_fraction'],actual_fraction)
-            if np.any(np.abs(data.qvel[c.v])>self.transfer_velocity+1e-3):
+            if np.any(np.abs(data.qvel[c.v[checked]])>self.transfer_velocity[checked]+1e-3):
                 self.abort('Measured transfer speed exceeds configured motor-speed fraction')
         if self.state != 'approach':
             self.metrics['max_held_joint_command_change_rad'] = max(self.metrics['max_held_joint_command_change_rad'],float(np.max(np.abs(target[self.held]-self.ready[self.held]))))
         tip_speed_limit = self.transfer_motion['transfer_tip_speed_stop_m_s'] if transfer_active else cfg['tip_speed_stop_m_s']
-        if force > cfg['force_stop_N'] or penetration > cfg['penetration_stop_m'] or speed > tip_speed_limit:
-            self.abort('Force, penetration, or tip-speed limit exceeded')
-        if np.max(np.abs(target-data.qpos[c.q])) > cfg['tracking_stop_rad']:
+        if force > cfg['force_stop_N']:
+            self.abort(f"Contact force {force:.2f} N exceeds {cfg['force_stop_N']:.2f} N limit")
+        elif penetration > cfg['penetration_stop_m']:
+            self.abort(f"Penetration {penetration*1000:.2f} mm exceeds {cfg['penetration_stop_m']*1000:.2f} mm limit")
+        elif transfer_active and tip_speed_limit is not None and speed > tip_speed_limit:
+            self.abort(f'Tip speed {speed:.3f} m/s exceeds {tip_speed_limit:.3f} m/s limit')
+        if np.max(np.abs(target[checked]-data.qpos[c.q[checked]])) > cfg['tracking_stop_rad']:
             self.abort('Joint tracking limit exceeded')
-        if not np.isfinite(data.qpos).all() or np.any(data.qpos[c.q]<c.bounds[:,0]-.001) or np.any(data.qpos[c.q]>c.bounds[:,1]+.001) or np.any(np.abs(data.qvel[c.v])>c.velocity) or sum(int(w.number) for w in data.warning):
+        if not np.isfinite(data.qpos).all() or np.any(data.qpos[c.q]<c.bounds[:,0]-.001) or np.any(data.qpos[c.q]>c.bounds[:,1]+.001) or np.any(np.abs(data.qvel[c.v[checked]])>c.velocity[checked]) or sum(int(w.number) for w in data.warning):
             self.abort('Joint limit or solver check failed')
         self.rows.append({'time_s':float(data.time),'state':self.state,'target_rad':target.tolist(),'actual_rad':data.qpos[c.q].tolist()})
 
@@ -287,7 +336,15 @@ class TaughtStrike:
         return {'status':'PASS' if self.finished and not self.failure and self.completed==self.count else 'FAIL',
                 'failure':self.failure,'completed_strikes':self.completed,'hit_count':len(self.detector.events),
                 'arm':self.side,'drum':self.target,'metrics':self.metrics,'hits':self.detector.events,
-                'transfer_motion':self.transfer_motion,'transfer_duration_s':float(self.approach_ends[-1])}
+                'transfer_motion':self.transfer_motion,'transfer_duration_s':float(self.approach_ends[-1]),
+                'transfer_blend_scale':self.transfer_trajectory.blend_scale if self.transfer_motion is not None else None,
+                'transfer_command_peak_rad_s':self.transfer_command_peak.tolist() if self.transfer_motion is not None else None,
+                'transfer_actual_peak_rad_s':self.transfer_actual_peak.tolist() if self.transfer_motion is not None else None,
+                'motor_velocity_limits_rad_s':self.controller.velocity.tolist(),
+                'stroke_timing':'motor_limits', 'downstroke_duration_s':self.cfg['downstroke_seconds'],
+                'retract_duration_s':self.cfg['retract_seconds'],
+                'j7_velocity_limit_rad_s':float(self.controller.velocity[self.wrist]),
+                'j7_acceleration_limit_rad_s2':self.wrist_acceleration}
 
     def save(self):
         (OUTPUT/'taught-strike-report.json').write_text(json.dumps(self.report(),indent=2)+'\n')

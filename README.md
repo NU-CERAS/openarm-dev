@@ -2,8 +2,6 @@
 
 CERAS @ Northwestern University's shared foundation for OpenArm simulation, controls, and creative robotics.
 
-## Get started
-
 Clone with `git clone --recurse-submodules <repository-url>` and enter the checkout.
 
 | Machine | Setup | Open the simulator afterward |

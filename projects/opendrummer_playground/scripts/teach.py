@@ -7,18 +7,21 @@ import mujoco.viewer
 import numpy as np
 
 from openarm_drummer.model import HoldController
-from openarm_drummer.taught import PoseStore, TaughtStrike
+from openarm_drummer.taught import PoseStore, TaughtStrike, PRESETS, DRUM_ARMS
 from openarm_drummer.telemetry import DrumTelemetry, LABELS, ORDER
 
 
 class TeachingSession:
-    def __init__(self, model, robot, scene, path=None):
+    def __init__(self, model, robot, scene, path=None, demo_path=None, original_path=None):
         self.model,self.robot,self.scene = model,robot,scene
         self.controller = HoldController(model,robot)
         self.data = mujoco.MjData(model)
         self.controller.reset(self.data)
-        self.pose = self.controller.target.copy()
+        self.park = self.controller.target.copy()
+        self.pose = self.park.copy()
         self.store = PoseStore(model,robot,scene,**({'path':path} if path else {}))
+        self.demo_path = demo_path if demo_path is not None else PRESETS.with_name('demo_poses.json')
+        self.original_path = original_path if original_path is not None else PRESETS.with_name('original_demo_poses.json')
         self.arm,self.drum = 'left','snare'
         self.wrist_only = False
         self.routine = None
@@ -39,7 +42,8 @@ class TeachingSession:
             raise ValueError('Stop or finish the physical test before editing')
         if action == 'select':
             self.store.key(message['arm'],message['drum'])
-            self.arm,self.drum = message['arm'],message['drum']
+            self.drum = message['drum']
+            self.arm = DRUM_ARMS.get(self.drum,message['arm'])
             self.wrist_only = False
             self.notice = 'Selection changed. Load its preset or jog a new ready pose.'
         elif action == 'jog':
@@ -75,8 +79,41 @@ class TeachingSession:
         elif action == 'save_strike':
             self.store.save_strike(self.arm,self.drum,self.pose[self.selected])
             self.notice = 'Strike angle saved. Test one hit checks the wrist arc and contact physics.'
+        elif action == 'publish':
+            if self.drum == 'kick':
+                raise ValueError('The live demo has no kick pedal controller')
+            preset = self.store.get(self.arm,self.drum)
+            # Check the saved wrist arc, not the current unsaved preview pose.
+            TaughtStrike(self.model,self.robot,self.scene,preset)
+            destination = PoseStore(self.model,self.robot,self.scene,self.demo_path)
+            # The live UI has one button per drum, so replace its arm assignment too.
+            destination.document['presets'] = {
+                key: item for key,item in destination.document['presets'].items()
+                if item.get('drum') != self.drum}
+            destination.document['presets'][self.store.key(self.arm,self.drum)] = preset
+            destination.document.get('unavailable', {}).pop(self.drum, None)
+            destination.write()
+            self.notice = f'{self.arm.title()} {LABELS[self.drum]} saved for live demo. Restart run_demo.py to use it.'
+        elif action in ('show_demo', 'show_original'):
+            path = self.demo_path if action == 'show_demo' else self.original_path
+            source = PoseStore(self.model,self.robot,self.scene,path)
+            owner = DRUM_ARMS.get(self.drum)
+            matches = [p for p in source.document['presets'].values()
+                       if p.get('drum') == self.drum and p.get('arm') == owner]
+            if not matches:
+                raise ValueError('No '+('demo' if action == 'show_demo' else 'original')+' ready pose for this drum')
+            # Match the live demo's last assignment if a file contains duplicate drums.
+            item = source.get(matches[-1]['arm'],self.drum,complete=False)
+            self.arm = item['arm']
+            self.pose[self.selected] = item['ready_rad']
+            self.wrist_only = False
+            self.preview()
+            label = 'Demo ready (restart demo to refresh)' if action == 'show_demo' else 'Original demo ready'
+            self.notice = f'{label}: {self.arm} arm. Preview only; Save ready to teach from here.'
         elif action == 'load':
-            item = self.store.get(self.arm,self.drum,complete=False)
+            latest = PoseStore(self.model,self.robot,self.scene,self.store.path)
+            item = latest.get(self.arm,self.drum,complete=False)
+            self.store = latest
             self.pose[self.selected] = item['ready_rad']
             self.wrist_only = True
             self.preview()
@@ -146,8 +183,9 @@ class NativeTeachingControls:
             session.notice = 'Physical test running. Space stops the test; editing is disabled.'
             return
         if key == glfw.KEY_F8:
-            session.command({'action': 'select', 'arm': 'right' if session.arm == 'left' else 'left',
-                             'drum': session.drum})
+            arm = 'right' if session.arm == 'left' else 'left'
+            drum = next(d for d in ORDER if DRUM_ARMS.get(d) == arm)
+            session.command({'action':'select','arm':arm,'drum':drum})
             self.joint = 0
         elif key == glfw.KEY_F9:
             drum = ORDER[(ORDER.index(session.drum)+1) % len(ORDER)]

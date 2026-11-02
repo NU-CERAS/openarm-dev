@@ -1,15 +1,25 @@
 {
   "transfer_speed_fraction": 1.0,
   "transfer_acceleration_rad_s2": [
-    6.0,
-    6.0,
-    10.0,
-    10.0,
-    30.0,
-    30.0,
-    30.0
+    192,
+    192,
+    320,
+    320,
+    960,
+    960,
+    960
   ],
-  "transfer_tip_speed_stop_m_s": 4.0,
-  "notes": "Transfer joint speed ceilings are 100% of each URDF motor velocity limit. Synchronized moves ramp up/down within provisional simulation acceleration limits. J7 hit timing is defined by each drum preset.",
-  "transfer_clearance_m": 0.008
+  "transfer_tip_speed_stop_m_s": null,
+  "notes": "Concurrent arm queues share one coupled physics step. Transfer acceleration tuned at 32x the original caps; motor velocity and torque limits remain enforced. Wrist acceleration is separate because impact penetration constrains strikes. Null tip-speed stop uses joint motor limits rather than an additional Cartesian cap. These are tested simulation settings, not hardware calibration.",
+  "transfer_clearance_m": 0.008,
+  "strike_acceleration_rad_s2": 120,
+  "strike_acceleration_by_drum_rad_s2": {
+    "snare": 120,
+    "rack_tom_left": 120,
+    "cymbal_left": 120,
+    "hi_hat": 120,
+    "rack_tom_right": 150,
+    "floor_tom": 120,
+    "cymbal_right": 150
+  }
 }
