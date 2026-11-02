@@ -1,0 +1,522 @@
+{
+  "official_commit": "10ca9bf2f49ef93a2f0f83f97ed2c0fb42dd9a90",
+  "official_url": "https://github.com/enactic/openarm_description/blob/10ca9bf2f49ef93a2f0f83f97ed2c0fb42dd9a90/assets/robot/openarm_v1.0/urdf/example/v1.urdf",
+  "original_sha256": "ce64772fdf2149a11b774abb854ff445ce8aa743b89eb27ba4db94a74288504f",
+  "official_sha256": "763d8e0280479cd4d9868e977c9c01416b9f83c8899c95b918446c0cfaf32f11",
+  "output_sha256": "3b0841d5f949ea8e5df31dcbf8d1eb33a9385de6235cfdcff2e97e9f9b8cc39d",
+  "frame_policy": "Shared world at zero; rotate COM inertia into each CAD carrier frame. Geometry/joint frames unchanged.",
+  "official_assemblies": [
+    {
+      "official_link": "openarm_body_link0",
+      "target_link": "root",
+      "assembly": "fixed_base",
+      "mass_kg": 3.74,
+      "com_in_target_m": [
+        -0.016206894902,
+        0.0,
+        0.244091987626
+      ],
+      "inertia_in_target_kg_m2": [
+        [
+          0.248946829107,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.253033907704,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0140271775534
+        ]
+      ]
+    },
+    {
+      "official_link": "openarm_left_link0",
+      "target_link": "dm_j8009p_v6_1__body1_3",
+      "assembly": "fixed_base",
+      "mass_kg": 1.1432284943239561,
+      "com_in_target_m": [
+        -0.00015812741558621975,
+        0.03173117402078951,
+        0.0009479145927488785
+      ],
+      "inertia_in_target_kg_m2": [
+        [
+          0.000961999970616599,
+          -7.000125293556793e-06,
+          -3.9993831104120825e-06
+        ],
+        [
+          -7.000125293556794e-06,
+          0.0014699999327050864,
+          -3.300032299567925e-05
+        ],
+        [
+          -3.999383110412082e-06,
+          -3.300032299567925e-05,
+          0.001128000096678315
+        ]
+      ]
+    },
+    {
+      "official_link": "openarm_left_link1",
+      "target_link": "j1_c_v3_1__body1_1",
+      "assembly": "lj1",
+      "mass_kg": 1.1416684646202298,
+      "com_in_target_m": [
+        3.345745516539547e-05,
+        0.0011469023928783275,
+        0.05395307317143443
+      ],
+      "inertia_in_target_kg_m2": [
+        [
+          0.0012729999979623563,
+          -9.990017200969406e-07,
+          9.992068162705354e-07
+        ],
+        [
+          -9.990017200969406e-07,
+          0.0015670002795139081,
+          -2.8997415276801323e-05
+        ],
+        [
+          9.992068162705354e-07,
+          -2.899741527680132e-05,
+          0.0010159997225237362
+        ]
+      ]
+    },
+    {
+      "official_link": "openarm_left_link2",
+      "target_link": "j2_a_v3_1__body1",
+      "assembly": "lj2",
+      "mass_kg": 0.2775092746011571,
+      "com_in_target_m": [
+        1.9472425010548599e-07,
+        -0.032566294753202614,
+        0.008396332604627514
+      ],
+      "inertia_in_target_kg_m2": [
+        [
+          0.00037600002203224666,
+          -9.98701290800631e-07,
+          9.995732187044961e-07
+        ],
+        [
+          -9.98701290800631e-07,
+          0.0002320010177320956,
+          0.00010900060699593134
+        ],
+        [
+          9.995732187044963e-07,
+          0.00010900060699593132,
+          0.00035899896023565804
+        ]
+      ]
+    },
+    {
+      "official_link": "openarm_left_link3",
+      "target_link": "dm_j4340p_v5_1__body1_1",
+      "assembly": "lj3",
+      "mass_kg": 1.073863338202347,
+      "com_in_target_m": [
+        -0.0005542001998577865,
+        0.0021044563585124743,
+        -0.09047440897191669
+      ],
+      "inertia_in_target_kg_m2": [
+        [
+          0.004319000174307712,
+          9.994907162555982e-07,
+          -3.5990386068057236e-05
+        ],
+        [
+          9.994907162555982e-07,
+          0.004372000039154967,
+          1.0995917755160986e-05
+        ],
+        [
+          -3.599038606805724e-05,
+          1.0995917755160986e-05,
+          0.0006609997865373291
+        ]
+      ]
+    },
+    {
+      "official_link": "openarm_left_link4",
+      "target_link": "j4_d_v3_1__body1",
+      "assembly": "lj4",
+      "mass_kg": 0.6348534566833373,
+      "com_in_target_m": [
+        0.00841424825362776,
+        0.06290220716759834,
+        0.03829306541158617
+      ],
+      "inertia_in_target_kg_m2": [
+        [
+          0.0006241040156911689,
+          -6.379668582568615e-06,
+          4.309078693372008e-06
+        ],
+        [
+          -6.379668582568625e-06,
+          0.00033289633832266633,
+          3.776923795044215e-05
+        ],
+        [
+          4.309078693372007e-06,
+          3.776923795044215e-05,
+          0.0005109996459861655
+        ]
+      ]
+    },
+    {
+      "official_link": "openarm_left_link5",
+      "target_link": "j5_a_1__body1",
+      "assembly": "lj5",
+      "mass_kg": 0.6156588026168502,
+      "com_in_target_m": [
+        0.0008879005044915055,
+        0.003048218087641327,
+        -0.04307967101359374
+      ],
+      "inertia_in_target_kg_m2": [
+        [
+          0.0004449997761179952,
+          8.000341356345798e-06,
+          5.9999915285481895e-06
+        ],
+        [
+          8.000341356345798e-06,
+          0.00042300033245687267,
+          5.999067948050767e-06
+        ],
+        [
+          5.999991528548189e-06,
+          5.999067948050767e-06,
+          0.0003239998914251329
+        ]
+      ]
+    },
+    {
+      "official_link": "openarm_left_link6",
+      "target_link": "fl6700zz_v2_1__body1_1",
+      "assembly": "lj6",
+      "mass_kg": 0.475202773187987,
+      "com_in_target_m": [
+        0.00033357372699920697,
+        -9.512969067848977e-05,
+        0.03543406132487309
+      ],
+      "inertia_in_target_kg_m2": [
+        [
+          0.00015700003922508387,
+          1.000012201671139e-06,
+          -9.997954097613703e-07
+        ],
+        [
+          1.000012201671139e-06,
+          0.0001589999695204461,
+          -1.0001616147138214e-06
+        ],
+        [
+          -9.9979540976137e-07,
+          -1.000161614713821e-06,
+          0.00014299999125447018
+        ]
+      ]
+    },
+    {
+      "official_link": "openarm_right_link0",
+      "target_link": "dm_j8009p_v6_1__body1_2",
+      "assembly": "fixed_base",
+      "mass_kg": 1.1432284943239561,
+      "com_in_target_m": [
+        0.0001576879513649781,
+        0.03173162351816186,
+        0.0009484432099139926
+      ],
+      "inertia_in_target_kg_m2": [
+        [
+          0.0009620001322632592,
+          7.003625453828393e-06,
+          4.000341594190775e-06
+        ],
+        [
+          7.003625453828393e-06,
+          0.001469999654686284,
+          -3.3001311345656475e-05
+        ],
+        [
+          4.000341594190773e-06,
+          -3.300131134565647e-05,
+          0.0011280002130504567
+        ]
+      ]
+    },
+    {
+      "official_link": "openarm_right_link1",
+      "target_link": "j1_c_v3_1__body1",
+      "assembly": "rj1",
+      "mass_kg": 1.1416684646202298,
+      "com_in_target_m": [
+        -3.237312670530608e-05,
+        0.001146145487213317,
+        0.053952628313867795
+      ],
+      "inertia_in_target_kg_m2": [
+        [
+          0.0012729999979580573,
+          1.0009511836748069e-06,
+          -1.0013052240973876e-06
+        ],
+        [
+          1.0009511836748069e-06,
+          0.0015670004187132774,
+          -2.8995953134278557e-05
+        ],
+        [
+          -1.0013052240973876e-06,
+          -2.8995953134278557e-05,
+          0.001015999583328666
+        ]
+      ]
+    },
+    {
+      "official_link": "openarm_right_link2",
+      "target_link": "j2_a_v3_1__body1_1",
+      "assembly": "rj2",
+      "mass_kg": 0.2775092746011571,
+      "com_in_target_m": [
+        5.502655654535395e-07,
+        -0.03256725563839789,
+        0.00839532016730499
+      ],
+      "inertia_in_target_kg_m2": [
+        [
+          0.00037600001265958386,
+          9.994772859764393e-07,
+          -1.0003215349292254e-06
+        ],
+        [
+          9.994772859764393e-07,
+          0.0002319994309092866,
+          0.00010899966932028387
+        ],
+        [
+          -1.0003215349292254e-06,
+          0.00010899966932028387,
+          0.0003590005564311301
+        ]
+      ]
+    },
+    {
+      "official_link": "openarm_right_link3",
+      "target_link": "dm_j4340p_v5_1__body1",
+      "assembly": "rj3",
+      "mass_kg": 1.073863338202347,
+      "com_in_target_m": [
+        -0.0005540117007584849,
+        0.0021063916646868186,
+        -0.09047551496357235
+      ],
+      "inertia_in_target_kg_m2": [
+        [
+          0.004319000359849354,
+          1.0007600696468104e-06,
+          -3.5982705995900774e-05
+        ],
+        [
+          1.0007600696468101e-06,
+          0.004371999838612559,
+          1.1023879910202517e-05
+        ],
+        [
+          -3.5982705995900774e-05,
+          1.1023879910202514e-05,
+          0.0006609998015380924
+        ]
+      ]
+    },
+    {
+      "official_link": "openarm_right_link4",
+      "target_link": "j4_d_v3_1__body1_1",
+      "assembly": "rj4",
+      "mass_kg": 0.6348534566833373,
+      "com_in_target_m": [
+        0.008417211567353531,
+        0.06290270788634736,
+        0.0382932708481417
+      ],
+      "inertia_in_target_kg_m2": [
+        [
+          0.0006241040898718458,
+          -6.381116060784504e-06,
+          4.307086254259129e-06
+        ],
+        [
+          -6.381116060784505e-06,
+          0.00033289565612036506,
+          3.776750108913816e-05
+        ],
+        [
+          4.307086254259128e-06,
+          3.776750108913815e-05,
+          0.0005110002540077901
+        ]
+      ]
+    },
+    {
+      "official_link": "openarm_right_link5",
+      "target_link": "j5_a_v3_1__body1",
+      "assembly": "rj5",
+      "mass_kg": 0.6156588026168502,
+      "com_in_target_m": [
+        0.0008863159836389708,
+        0.0030517660839282867,
+        0.04308042377677478
+      ],
+      "inertia_in_target_kg_m2": [
+        [
+          0.00044499975402335576,
+          8.000176332861054e-06,
+          -6.000818472282645e-06
+        ],
+        [
+          8.000176332861054e-06,
+          0.00042300016234280975,
+          -6.000087290594852e-06
+        ],
+        [
+          -6.000818472282645e-06,
+          -6.000087290594852e-06,
+          0.00032400008363383506
+        ]
+      ]
+    },
+    {
+      "official_link": "openarm_right_link6",
+      "target_link": "j7_b_v3_1__body1_3",
+      "assembly": "rj6",
+      "mass_kg": 0.475202773187987,
+      "com_in_target_m": [
+        -0.00033244407804077826,
+        9.41504914030855e-05,
+        -0.03543838479973437
+      ],
+      "inertia_in_target_kg_m2": [
+        [
+          0.00015700003968950585,
+          1.000020488698753e-06,
+          -9.99837937638635e-07
+        ],
+        [
+          1.0000204886987528e-06,
+          0.00015899997217873766,
+          -1.0000862995334865e-06
+        ],
+        [
+          -9.998379376386345e-07,
+          -1.0000862995334867e-06,
+          0.00014299998813175677
+        ]
+      ]
+    }
+  ],
+  "custom_tool_components": [
+    {
+      "link": "base",
+      "mass_kg": 0.0546806,
+      "source_scale": 1000.0,
+      "status": "Custom CAD estimate; not official or measured"
+    },
+    {
+      "link": "base_1",
+      "mass_kg": 0.0546806,
+      "source_scale": 1000.0,
+      "status": "Custom CAD estimate; not official or measured"
+    },
+    {
+      "link": "drumstick",
+      "mass_kg": 0.0192806,
+      "source_scale": 1.0,
+      "status": "Custom CAD estimate; not official or measured"
+    },
+    {
+      "link": "drumstick_1",
+      "mass_kg": 0.0192806,
+      "source_scale": 1.0,
+      "status": "Custom CAD estimate; not official or measured"
+    },
+    {
+      "link": "hex_socket_head_cap_screw_m3x0_50_x_8",
+      "mass_kg": 0.000943321,
+      "source_scale": 1.0,
+      "status": "Custom CAD estimate; not official or measured"
+    },
+    {
+      "link": "hex_socket_head_cap_screw_m3x0_50_x_8_1",
+      "mass_kg": 0.000943321,
+      "source_scale": 1.0,
+      "status": "Custom CAD estimate; not official or measured"
+    },
+    {
+      "link": "hex_socket_head_cap_screw_m3x0_50_x_8_2",
+      "mass_kg": 0.000943321,
+      "source_scale": 1.0,
+      "status": "Custom CAD estimate; not official or measured"
+    },
+    {
+      "link": "hex_socket_head_cap_screw_m3x0_50_x_8_3",
+      "mass_kg": 0.000943321,
+      "source_scale": 1.0,
+      "status": "Custom CAD estimate; not official or measured"
+    },
+    {
+      "link": "hex_socket_head_cap_screw_m3x0_50_x_8_4",
+      "mass_kg": 0.000943321,
+      "source_scale": 1.0,
+      "status": "Custom CAD estimate; not official or measured"
+    },
+    {
+      "link": "hex_socket_head_cap_screw_m3x0_50_x_8_5",
+      "mass_kg": 0.000943321,
+      "source_scale": 1.0,
+      "status": "Custom CAD estimate; not official or measured"
+    },
+    {
+      "link": "hex_socket_head_cap_screw_m3x0_50_x_8_6",
+      "mass_kg": 0.000943321,
+      "source_scale": 1.0,
+      "status": "Custom CAD estimate; not official or measured"
+    },
+    {
+      "link": "hex_socket_head_cap_screw_m3x0_50_x_8_7",
+      "mass_kg": 0.000943321,
+      "source_scale": 1.0,
+      "status": "Custom CAD estimate; not official or measured"
+    },
+    {
+      "link": "screwon",
+      "mass_kg": 0.023759000000000002,
+      "source_scale": 1000.0,
+      "status": "Custom CAD estimate; not official or measured"
+    },
+    {
+      "link": "screwon_1",
+      "mass_kg": 0.023759000000000002,
+      "source_scale": 1000.0,
+      "status": "Custom CAD estimate; not official or measured"
+    }
+  ],
+  "limitations": [
+    "Official link7 end-effector assembly is absent and is not added to custom tools.",
+    "Base/ScrewOn mass and inertia retain a provisional 1000x CAD unit correction; weigh these parts to calibrate.",
+    "Official model properties are reference values, not measurements of this robot.",
+    "CAD and official axes have small offsets; reference inertias are mapped at zero without changing CAD kinematics."
+  ]
+}

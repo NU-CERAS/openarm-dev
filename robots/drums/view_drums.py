@@ -1,7 +1,7 @@
 """Inspect and display the imported drum-kit OBJ in MuJoCo.
 
-Put this file in robots/drums/view_drums.py beside drums.xml, then run:
-    /Users/parthrana/openarm-sim/.venv/bin/mjpython robots/drums/view_drums.py
+From the repository root on macOS, run with the project's Pixi environment:
+    ~/.pixi/bin/pixi run --manifest-path dependencies/mac/pixi.toml mjpython robots/drums/view_drums.py
 
 Uses compiled mesh vertices (in the mesh geom's local frame) and the geom's
 world transform to determine the visible bounds. Does not add mesh_pos or

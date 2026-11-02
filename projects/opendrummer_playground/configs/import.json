@@ -1,0 +1,41 @@
+{
+  "inertia_status": "URDF contains pinned official OpenArm base and links 0-6 inertials. Joint-7 custom mounts/sticks remain documented CAD estimates. Import performs no mass scaling.",
+  "timestep": 0.001,
+  "kp": [
+    60,
+    60,
+    40,
+    40,
+    12,
+    12,
+    12
+  ],
+  "kd": [
+    6,
+    6,
+    4,
+    4,
+    1.2,
+    1.2,
+    1.2
+  ],
+  "armature": 0.01,
+  "hold_left": [
+    0,
+    0,
+    0,
+    0.35,
+    0,
+    0,
+    0
+  ],
+  "hold_right": [
+    0,
+    0,
+    0,
+    0.35,
+    0,
+    0,
+    0
+  ]
+}

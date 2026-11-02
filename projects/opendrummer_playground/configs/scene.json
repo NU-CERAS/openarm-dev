@@ -1,0 +1,20 @@
+{
+  "robot_elevation_m": 0.3048,
+  "support_size_xy_m": [0.4, 0.4],
+  "kit_scale": 0.6,
+  "kit_position_xy": [0.55, 0.0],
+  "kit_yaw_degrees": 0.0,
+  "scale_note": "Explicit visual scale assumption, not hardware calibration. Produces a roughly 0.57 m bass head. Source OBJ has no unit metadata.",
+  "approach_height_m": 0.08,
+  "initial_targets": {"left": "snare", "right": "rack_tom_right"},
+  "surfaces": [
+    {"name": "floor_tom", "material": "Black_transp", "source_seed": [-0.761, -0.265, -0.338], "minimum_source_radius": 0.24, "kind": "drumhead"},
+    {"name": "rack_tom_right", "material": "Black_transp", "source_seed": [-0.270, 0.044, -0.089], "minimum_source_radius": 0.23, "kind": "drumhead"},
+    {"name": "rack_tom_left", "material": "Black_transp", "source_seed": [0.257, 0.044, -0.074], "minimum_source_radius": 0.22, "kind": "drumhead"},
+    {"name": "snare", "material": "Black_transp", "source_seed": [0.620, -0.211, -0.431], "minimum_source_radius": 0.25, "kind": "drumhead"},
+    {"name": "kick", "material": "Black_transp", "source_seed": [0.000, -0.830, -0.237], "minimum_source_radius": 0.46, "kind": "kick"},
+    {"name": "cymbal_right", "material": "Metal", "source_seed": [-1.121, 0.241, -0.013], "minimum_source_radius": 0.40, "kind": "cymbal"},
+    {"name": "cymbal_left", "material": "Metal", "source_seed": [0.779, 0.365, 0.109], "minimum_source_radius": 0.38, "kind": "cymbal"},
+    {"name": "hi_hat", "material": "Metal", "source_seed": [1.179, 0.112, -0.179], "minimum_source_radius": 0.26, "kind": "cymbal"}
+  ]
+}

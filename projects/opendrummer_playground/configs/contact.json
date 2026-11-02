@@ -1,0 +1,23 @@
+{
+  "head_thickness_m": 0.008,
+  "rim_radius_m": 0.003,
+  "shell_wall_thickness_m": 0.006,
+  "shell_segments": 24,
+  "head_solref": [0.012, 1.0],
+  "rigid_solref": [0.006, 1.0],
+  "solimp": [0.9, 0.95, 0.001],
+  "friction": [0.5, 0.005, 0.0001],
+  "stick_shaft_radius_m": 0.00724,
+  "stick_tip_radius_m": 0.004,
+  "stick_length_m": 0.3048,
+  "test_arm": "left",
+  "test_target": "snare",
+  "test_approach_m": 0.04,
+  "test_command_penetration_m": 0.003,
+  "test_descent_seconds": 4.0,
+  "test_dwell_seconds": 0.5,
+  "test_retract_seconds": 2.0,
+  "force_stop_N": 20.0,
+  "penetration_stop_m": 0.003,
+  "notes": "Initial numerical contact settings, not calibrated membrane or impact physics. Slow contact check only."
+}

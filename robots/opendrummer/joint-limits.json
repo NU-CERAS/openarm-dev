@@ -1,0 +1,146 @@
+{
+  "source_commit": "1f8a3c76d8b043dfb4256061ddd61ca0441884e0",
+  "source_url": "https://github.com/enactic/openarm_description/blob/1f8a3c76d8b043dfb4256061ddd61ca0441884e0/assets/robot/openarm_v1.0/urdf/example/v1.urdf",
+  "joint_limits": {
+    "lj1": {
+      "lower_rad": -1.3962629999999998,
+      "upper_rad": 3.490659,
+      "lower_deg": -80.0,
+      "upper_deg": 200.0,
+      "effort_Nm": 40.0,
+      "velocity_rad_s": 16.754666,
+      "axis_sign_relative_to_official": -1,
+      "axis_line_offset_m": 4.051884097124404e-07
+    },
+    "lj2": {
+      "lower_rad": -0.17453267320510335,
+      "upper_rad": 3.3161253267948965,
+      "lower_deg": -10.0,
+      "upper_deg": 190.0,
+      "effort_Nm": 40.0,
+      "velocity_rad_s": 16.754666,
+      "axis_sign_relative_to_official": -1,
+      "axis_line_offset_m": 1.6917849510181633e-07
+    },
+    "lj3": {
+      "lower_rad": -1.570796,
+      "upper_rad": 1.570796,
+      "lower_deg": -90.0,
+      "upper_deg": 90.0,
+      "effort_Nm": 27.0,
+      "velocity_rad_s": 5.445426,
+      "axis_sign_relative_to_official": -1,
+      "axis_line_offset_m": 5.249475906508649e-07
+    },
+    "lj4": {
+      "lower_rad": 0.0,
+      "upper_rad": 2.443461,
+      "lower_deg": 0.0,
+      "upper_deg": 140.0,
+      "effort_Nm": 27.0,
+      "velocity_rad_s": 5.445426,
+      "axis_sign_relative_to_official": 1,
+      "axis_line_offset_m": 3.8308166241938915e-07
+    },
+    "lj5": {
+      "lower_rad": -1.570796,
+      "upper_rad": 1.570796,
+      "lower_deg": -90.0,
+      "upper_deg": 90.0,
+      "effort_Nm": 7.0,
+      "velocity_rad_s": 20.943946,
+      "axis_sign_relative_to_official": -1,
+      "axis_line_offset_m": 1.5681801057106532e-06
+    },
+    "lj6": {
+      "lower_rad": -0.785398,
+      "upper_rad": 0.785398,
+      "lower_deg": -45.0,
+      "upper_deg": 45.0,
+      "effort_Nm": 7.0,
+      "velocity_rad_s": 20.943946,
+      "axis_sign_relative_to_official": 1,
+      "axis_line_offset_m": 1.9051198525876833e-06
+    },
+    "lj7": {
+      "lower_rad": -1.570796,
+      "upper_rad": 1.570796,
+      "lower_deg": -90.0,
+      "upper_deg": 90.0,
+      "effort_Nm": 7.0,
+      "velocity_rad_s": 20.943946,
+      "axis_sign_relative_to_official": -1,
+      "axis_line_offset_m": 0.0017025395205944522
+    },
+    "rj1": {
+      "lower_rad": -3.490659,
+      "upper_rad": 1.396263,
+      "lower_deg": -200.0,
+      "upper_deg": 80.0,
+      "effort_Nm": 40.0,
+      "velocity_rad_s": 16.754666,
+      "axis_sign_relative_to_official": -1,
+      "axis_line_offset_m": 6.118516425238334e-07
+    },
+    "rj2": {
+      "lower_rad": -3.3161253267948965,
+      "upper_rad": 0.17453267320510335,
+      "lower_deg": -190.0,
+      "upper_deg": 10.0,
+      "effort_Nm": 40.0,
+      "velocity_rad_s": 16.754666,
+      "axis_sign_relative_to_official": -1,
+      "axis_line_offset_m": 8.768372108444393e-07
+    },
+    "rj3": {
+      "lower_rad": -1.570796,
+      "upper_rad": 1.570796,
+      "lower_deg": -90.0,
+      "upper_deg": 90.0,
+      "effort_Nm": 27.0,
+      "velocity_rad_s": 5.445426,
+      "axis_sign_relative_to_official": -1,
+      "axis_line_offset_m": 1.1521359999197753e-06
+    },
+    "rj4": {
+      "lower_rad": 0.0,
+      "upper_rad": 2.443461,
+      "lower_deg": 0.0,
+      "upper_deg": 140.0,
+      "effort_Nm": 27.0,
+      "velocity_rad_s": 5.445426,
+      "axis_sign_relative_to_official": 1,
+      "axis_line_offset_m": 1.7979432923820876e-06
+    },
+    "rj5": {
+      "lower_rad": -1.570796,
+      "upper_rad": 1.570796,
+      "lower_deg": -90.0,
+      "upper_deg": 90.0,
+      "effort_Nm": 7.0,
+      "velocity_rad_s": 20.943946,
+      "axis_sign_relative_to_official": -1,
+      "axis_line_offset_m": 2.205772396965606e-06
+    },
+    "rj6": {
+      "lower_rad": -0.785398,
+      "upper_rad": 0.785398,
+      "lower_deg": -45.0,
+      "upper_deg": 45.0,
+      "effort_Nm": 7.0,
+      "velocity_rad_s": 20.943946,
+      "axis_sign_relative_to_official": 1,
+      "axis_line_offset_m": 8.383458865025369e-07
+    },
+    "rj7": {
+      "lower_rad": -1.570796,
+      "upper_rad": 1.570796,
+      "lower_deg": -90.0,
+      "upper_deg": 90.0,
+      "effort_Nm": 7.0,
+      "velocity_rad_s": 20.943946,
+      "axis_sign_relative_to_official": -1,
+      "axis_line_offset_m": 0.0016977854095102574
+    }
+  }
+}

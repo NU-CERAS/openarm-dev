@@ -1,0 +1,135 @@
+{
+  "reconnected_shell_pairs": 11,
+  "arm_shell_bodies": 20,
+  "chest_shell_bodies": 2,
+  "links": 450,
+  "joints": 449,
+  "movable_joints": [
+    "lj1",
+    "lj2",
+    "lj3",
+    "lj4",
+    "lj5",
+    "lj6",
+    "lj7",
+    "rj1",
+    "rj2",
+    "rj3",
+    "rj4",
+    "rj5",
+    "rj6",
+    "rj7"
+  ],
+  "zero_pose_max_matrix_error": 7.771561172376096e-16,
+  "tested_joint_poses": 34,
+  "max_shell_relative_transform_error": 1.5543122344752192e-15,
+  "mesh_files_verified": 76,
+  "repairs": [
+    {
+      "shell": "j4_j5_cover_v3_1__body2_1",
+      "parent": "j4_j5_cover_v3_1__1__1",
+      "moving_joints": [
+        "rj1",
+        "rj2",
+        "rj3",
+        "rj4"
+      ],
+      "matching_origin_distance_m": 2.4992637950304915e-06
+    },
+    {
+      "shell": "j4_j5_cover_v3_1__body1",
+      "parent": "j4_j5_cover_v3_1__1_",
+      "moving_joints": [
+        "lj1",
+        "lj2",
+        "lj3",
+        "lj4"
+      ],
+      "matching_origin_distance_m": 3.365621468858896e-06
+    },
+    {
+      "shell": "j1_j2_cover_v3_1__body1_1",
+      "parent": "j1_j2_cover_v3_1__1__1",
+      "moving_joints": [
+        "lj1"
+      ],
+      "matching_origin_distance_m": 9.963921908809902e-07
+    },
+    {
+      "shell": "j2_j3_cover_v2_1__body2",
+      "parent": "j2_j3_cover_v2_1__1_",
+      "moving_joints": [
+        "lj1",
+        "lj2"
+      ],
+      "matching_origin_distance_m": 7.559586945479658e-07
+    },
+    {
+      "shell": "j6_j7_cover_v2_1__body2",
+      "parent": "j6_j7_cover_v2_1__1_",
+      "moving_joints": [
+        "rj1",
+        "rj2",
+        "rj3",
+        "rj4",
+        "rj5"
+      ],
+      "matching_origin_distance_m": 2.7255843418856827e-06
+    },
+    {
+      "shell": "j2_j3_cover_v2_1__body1_1",
+      "parent": "j2_j3_cover_v2_1__1__1",
+      "moving_joints": [
+        "rj1",
+        "rj2"
+      ],
+      "matching_origin_distance_m": 1.0185174054561954e-06
+    },
+    {
+      "shell": "j3_j4_cover_v2_1__body2",
+      "parent": "j3_j4_cover_v2_1__1_",
+      "moving_joints": [
+        "rj1",
+        "rj2",
+        "rj3"
+      ],
+      "matching_origin_distance_m": 3.3976542571826526e-06
+    },
+    {
+      "shell": "j6_j7_cover_left_1__body2",
+      "parent": "j6_j7_cover_left_1__1_",
+      "moving_joints": [
+        "lj1",
+        "lj2",
+        "lj3",
+        "lj4",
+        "lj5"
+      ],
+      "matching_origin_distance_m": 3.1281984634368433e-06
+    },
+    {
+      "shell": "j1_j2_cover_v3_1__body2",
+      "parent": "j1_j2_cover_v3_1__1_",
+      "moving_joints": [
+        "rj1"
+      ],
+      "matching_origin_distance_m": 8.9455478874219e-07
+    },
+    {
+      "shell": "chest_cover_v3_1__body1",
+      "parent": "chest_cover_v3_1__1_",
+      "moving_joints": [],
+      "matching_origin_distance_m": 3.4616394880092534e-07
+    },
+    {
+      "shell": "j3_j4_cover_v2_1__body1_1",
+      "parent": "j3_j4_cover_v2_1__1__1",
+      "moving_joints": [
+        "lj1",
+        "lj2",
+        "lj3"
+      ],
+      "matching_origin_distance_m": 8.992816606852964e-07
+    }
+  ]
+}
