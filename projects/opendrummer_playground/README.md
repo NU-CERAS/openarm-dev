@@ -14,6 +14,7 @@ From the repository root, activate the existing project environment:
 
 ```sh
 ~/.pixi/bin/pixi shell --manifest-path dependencies/mac/pixi.toml
+python -m pip install -e projects/opendrummer_playground
 ```
 
 Run the automated checks:

@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 import mujoco
 import numpy as np
 
-from model import ROOT, OUTPUT, CONFIG, HoldController, build
+from openarm_drummer.model import ROOT, OUTPUT, CONFIG, HoldController, build
 
 SCENE_CONFIG = CONFIG.with_name('scene.json')
 DRUMS = ROOT / 'robots/drums'
@@ -208,7 +208,7 @@ def build_scene(collisions=True):
               'scene_config_sha256': hashlib.sha256(SCENE_CONFIG.read_bytes()).hexdigest(),
               'platform_removed_triangles': len(platform_faces), 'collision_enabled': False}
     if collisions:
-        from collisions import add_collisions
+        from openarm_drummer.collisions import add_collisions
         model, contact_report = add_collisions(model, report, vertices, materials, components)
         report['collision_enabled'] = True
         report['collision_geom_count'] = contact_report['collision_geom_count']
@@ -217,7 +217,7 @@ def build_scene(collisions=True):
 
 
 def solve_approach(model, robot_report, scene_report, side, target_name, height=None, seed=None, wrist_angle=None, joint_margin=.001,
-                   tip_direction=None, attempts=16, iterations=250):
+                   tip_direction=None, attempts=16, iterations=250, pose_validator=None):
     """Joint-limited static IK only; does not plan or certify a clear path."""
     target = next(s for s in scene_report['surfaces'] if s['name'] == target_name)
     if target['kind'] == 'kick':
@@ -239,6 +239,7 @@ def solve_approach(model, robot_report, scene_report, side, target_name, height=
     sid = model.site(f'{side}_stick_tip').id
     rng = np.random.default_rng(9)
     best = None
+    accepted = False
     for attempt in range(attempts):
         data = mujoco.MjData(model)
         controller.reset(data)
@@ -256,7 +257,10 @@ def solve_approach(model, robot_report, scene_report, side, target_name, height=
             if best is None or score < best[0]:
                 best = (score, data.qpos[controller.q].copy(), float(np.linalg.norm(error[:3])),
                         float(np.degrees(np.arccos(np.clip(z@direction, -1, 1)))))
-            if best[2] < .0001 and best[3] < .1:
+            converged = best[2] < .0001 and best[3] < .1
+            if pose_validator is not None:
+                converged = np.linalg.norm(error[:3]) < .0001 and np.linalg.norm(direction-z) < .002
+            if converged:
                 break
             jp, jr = np.zeros((3, model.nv)), np.zeros((3, model.nv))
             mujoco.mj_jacSite(model, data, jp, jr, sid)
@@ -265,12 +269,20 @@ def solve_approach(model, robot_report, scene_report, side, target_name, height=
             delta = jacobian.T @ np.linalg.solve(jacobian@jacobian.T+.0002*np.eye(6), error)
             data.qpos[qids] = np.clip(data.qpos[qids]+np.clip(delta, -.12, .12),
                                       controller.bounds[selected, 0]+joint_margin, controller.bounds[selected, 1]-joint_margin)
-        if best[2] < .0001 and best[3] < .1:
+        if pose_validator is not None:
+            mujoco.mj_forward(model, data)
+            position_error = float(np.linalg.norm(position-data.site_xpos[sid]))
+            direction_error = float(np.degrees(np.arccos(np.clip(data.site_xmat[sid].reshape(3, 3)[:, 2]@direction, -1, 1))))
+            if position_error < .005 and direction_error < 10 and pose_validator(data.qpos[controller.q].copy()):
+                best = (position_error, data.qpos[controller.q].copy(), position_error, direction_error)
+                accepted = True
+                break
+        elif best[2] < .0001 and best[3] < .1:
             break
     return {'arm': side, 'target': target_name, 'approach_position': position.tolist(),
             'tip_direction': direction.tolist(), 'joint_positions': best[1].tolist(),
             'position_error_m': best[2], 'direction_error_degrees': best[3],
-            'reachable': best[2] < .005 and best[3] < 10,
+            'reachable': best[2] < .005 and best[3] < 10 and (pose_validator is None or accepted),
             'clearance_status': 'Not collision-certified; inspect geometry before planning motion'}
 
 

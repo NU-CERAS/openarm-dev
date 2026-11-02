@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 import mujoco
 import numpy as np
 
-from model import CONFIG, OUTPUT
+from openarm_drummer.model import CONFIG, OUTPUT
 
 CONTACT_CONFIG = CONFIG.with_name('contact.json')
 

@@ -5,7 +5,7 @@ import glfw
 import numpy as np
 from PIL import Image, ImageDraw
 
-from telemetry import LABELS, ORDER, font
+from openarm_drummer.telemetry import LABELS, ORDER, font
 
 
 class JogPanel:

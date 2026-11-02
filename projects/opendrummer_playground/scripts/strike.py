@@ -4,8 +4,8 @@ import json
 import mujoco
 import numpy as np
 
-from model import CONFIG, OUTPUT, HoldController
-from scene import build_scene, solve_approach
+from openarm_drummer.model import CONFIG, OUTPUT, HoldController
+from openarm_drummer.scene import build_scene, solve_approach
 
 STRIKE_CONFIG = CONFIG.with_name('strike.json')
 
@@ -50,11 +50,11 @@ class HitDetector:
 
 
 class StrikeSession:
-    def __init__(self, model, robot_report, scene_report, count=1):
+    def __init__(self, model, robot_report, scene_report, count=1, impact_seed=None, configuration=None):
         if type(count) is not int or not 1 <= count <= 100:
             raise ValueError('Strike count must be between 1 and 100')
         self.model = model
-        self.config = json.loads(STRIKE_CONFIG.read_text())
+        self.config = json.loads(STRIKE_CONFIG.read_text()) if configuration is None else dict(configuration)
         self.cfg = self.config
         for key, value in self.cfg.items():
             if isinstance(value, (int, float)) and (not np.isfinite(value) or (key != 'impact_joint7_rad' and value <= 0)):
@@ -73,15 +73,50 @@ class StrikeSession:
         self.sid = model.site(f'{self.side}_stick_tip').id
         self.tip = model.geom(f'{self.side}_stick_tip_collision').id
         self.head = model.geom(f'{self.target}_head_collision').id
+        self.probe = mujoco.MjData(model)
+        c = self.controller
+
+        def accepts_wrist_arc(pose):
+            q7 = pose[6]
+
+            def tip(angle):
+                self.probe.qpos[c.q] = pose
+                self.probe.qpos[c.q[6]] = angle
+                mujoco.mj_forward(model, self.probe)
+                return float((self.probe.site_xpos[self.sid]-self.center)@self.normal)
+
+            gradient = (tip(q7+.0001)-tip(q7-.0001))/.0002
+            if abs(gradient) < .02:
+                return False
+            endpoints = []
+            for wanted in (self.cfg['ready_height_m'], -self.cfg['command_depth_m']):
+                direction = np.sign(wanted/gradient)
+                angles = np.linspace(q7, np.clip(q7+direction*1.5, *c.bounds[6]), 301)
+                values = np.array([tip(a)-wanted for a in angles])
+                crossings = np.flatnonzero(values[:-1]*values[1:] <= 0)
+                if not len(crossings):
+                    return False
+                endpoints.append(angles[crossings[0]])
+            for angle in np.linspace(*endpoints, 101):
+                height = tip(angle)
+                radial = np.linalg.norm(self.probe.site_xpos[self.sid]-self.center-height*self.normal)
+                if radial > self.surface['radius']-.01:
+                    return False
+                for contact in self.probe.contact:
+                    virtual = height < 0 and self.head in (contact.geom1, contact.geom2) and any(
+                        model.geom(g).name.startswith(self.side+'_stick_') for g in (contact.geom1, contact.geom2))
+                    if contact.dist < -1e-5 and not virtual and {contact.geom1, contact.geom2} != {self.tip, self.head}:
+                        return False
+            return True
+
         # Solve the impact pose first, then lift only J7. This keeps the impact
         # point centered despite the tip following a circular wrist arc.
         impact = solve_approach(model, robot_report, scene_report, self.side, self.target,
-                                height=0., wrist_angle=self.cfg['impact_joint7_rad'], joint_margin=.03)
+                                height=0., wrist_angle=self.cfg['impact_joint7_rad'], joint_margin=.03, seed=impact_seed,
+                                pose_validator=accepts_wrist_arc if impact_seed is not None else None)
         if not impact['reachable']:
             raise RuntimeError('No reachable wrist impact pose')
         self.impact_pose = np.array(impact['joint_positions'])
-        self.probe = mujoco.MjData(model)
-        c = self.controller
         def height(angle):
             self.probe.qpos[c.q] = self.impact_pose
             self.probe.qpos[c.q[6]] = angle
@@ -204,7 +239,7 @@ class StrikeSession:
         self.failure = reason
         self.finished = True
 
-    def step(self, data):
+    def step(self, data, joint7_offset=0.0):
         if self.finished:
             return
         cfg, c = self.cfg, self.controller
@@ -236,7 +271,10 @@ class StrikeSession:
             self.cycle_hit_start = len(self.detector.events)
             self.transition('ready', data)
 
+        if not np.isfinite(joint7_offset) or abs(joint7_offset) > .2:
+            raise ValueError('J7 adjustment must be finite and within 0.2 rad')
         target, velocity = self.desired(data)
+        target[6] += joint7_offset
         if np.any(target < c.bounds[:, 0]) or np.any(target > c.bounds[:, 1]) or np.any(np.abs(velocity) > c.velocity):
             self.abort('Command exceeds joint position or velocity limits')
             return

@@ -5,9 +5,9 @@ import xml.etree.ElementTree as ET
 import mujoco
 import numpy as np
 
-from collisions import CONTACT_CONFIG
-from model import HoldController, OUTPUT
-from scene import build_scene, solve_approach
+from openarm_drummer.collisions import CONTACT_CONFIG
+from openarm_drummer.model import HoldController, OUTPUT
+from openarm_drummer.scene import build_scene, solve_approach
 
 
 class ContactCheck:

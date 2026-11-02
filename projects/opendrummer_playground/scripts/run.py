@@ -10,8 +10,8 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 
-from model import JOINTS, OUTPUT, HoldController, build
-from scene import build_scene, solve_approach
+from openarm_drummer.model import JOINTS, OUTPUT, HoldController, build
+from openarm_drummer.scene import build_scene, solve_approach
 
 
 def save_png(path, pixels):
@@ -88,7 +88,7 @@ def main():
         print('Surface targets: '+', '.join(s['name'] for s in scene_report['surfaces']))
         print('Primitive contact geometry enabled. '+scene_report['config']['scale_note'])
     if args.teach:
-        from teach import run_teaching
+        from openarm_drummer.teach import run_teaching
         run_teaching(model, report, scene_report)
         return
     data = mujoco.MjData(model)
@@ -106,17 +106,17 @@ def main():
     controller.reset(data)
     routine = None
     if args.contact_test:
-        from contact_check import ContactCheck
+        from openarm_drummer.contact_check import ContactCheck
         routine = ContactCheck(model, report, scene_report)
         routine.reset(data)
         print(f'Slow contact check: {routine.side} stick / {routine.target}; {routine.duration:.1f}s')
     elif args.strike:
         if args.preset:
-            from taught import PoseStore, TaughtStrike
+            from openarm_drummer.taught import PoseStore, TaughtStrike
             preset = PoseStore(model, report, scene_report).get(args.arm, args.preset)
             routine = TaughtStrike(model, report, scene_report, preset, args.strikes)
         else:
-            from strike import StrikeSession
+            from openarm_drummer.strike import StrikeSession
             routine = StrikeSession(model, report, scene_report, args.strikes)
         routine.reset(data)
         print(f'{args.strikes} {routine.side}-arm {routine.target} strike(s).', flush=True)
@@ -124,7 +124,7 @@ def main():
     last_joint = None
     telemetry = None
     if scene_report is not None:
-        from telemetry import DrumTelemetry
+        from openarm_drummer.telemetry import DrumTelemetry
         telemetry = DrumTelemetry(model, scene_report)
     panel_enabled = telemetry is not None and not args.no_hit_panel
 

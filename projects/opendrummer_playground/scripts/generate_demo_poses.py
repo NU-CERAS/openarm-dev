@@ -5,10 +5,10 @@ import json
 import mujoco
 import numpy as np
 
-from model import CONFIG, HoldController
-from scene import build_scene, solve_approach
-from taught import TaughtStrike, scene_signature
-from telemetry import ORDER
+from openarm_drummer.model import CONFIG, HoldController
+from openarm_drummer.scene import build_scene, solve_approach
+from openarm_drummer.taught import TaughtStrike, scene_signature
+from openarm_drummer.telemetry import ORDER
 
 DESTINATION = CONFIG.with_name('demo_poses.json')
 
@@ -59,7 +59,7 @@ def generate():
             document['unavailable'][drum]='Kick is a pedal target; this demo drives the two stick arms.'
             continue
         if drum=='snare':
-            from strike import StrikeSession
+            from openarm_drummer.strike import StrikeSession
             reference=StrikeSession(model,robot,scene)
             preset={'arm':'left','drum':'snare','ready_rad':reference.approach[:7].tolist(),
                     'strike_joint7_rad':float(reference.bottom[6]),'scene_signature':scene_signature(scene),

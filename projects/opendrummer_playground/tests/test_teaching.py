@@ -1,7 +1,6 @@
 """Teach/save/reload/playback regression checks using real robot geometry."""
 from pathlib import Path
 import json
-import sys
 import tempfile
 import unittest
 
@@ -9,12 +8,11 @@ import glfw
 import mujoco
 import numpy as np
 
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from scene import build_scene
-from strike import StrikeSession
-from taught import PoseStore,TaughtStrike
-from teach import TeachingSession, NativeTeachingControls
-from teach_panel import JogPanel
+from openarm_drummer.scene import build_scene
+from openarm_drummer.strike import StrikeSession
+from openarm_drummer.taught import PoseStore,TaughtStrike
+from openarm_drummer.teach import TeachingSession, NativeTeachingControls
+from openarm_drummer.teach_panel import JogPanel
 
 
 class TeachingTests(unittest.TestCase):

@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openarm-rl"
+version = "0.1.0"
+description = "OpenArm oracle teachers, ACT imitation and visual policy distillation"
+requires-python = ">=3.12"
+dependencies = [
+    "openarm-sim>=0.1.0", "openarm-drummer>=0.1.0",
+    "gymnasium==1.4.0", "stable-baselines3==2.9.0", "torch>=2.10",
+    "imageio>=2.37,<3", "imageio-ffmpeg==0.6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9,<10"]
+gpu-sim = ["mujoco-warp==3.17.0"]
+tracking = ["wandb==0.31.0"]
+imitation = ["h5py==3.16.0", "torchvision==0.29.1"]
+
+[project.scripts]
+openarm-train-drum = "openarm_rl.training.train:main"
+openarm-train-pickup-gpu = "openarm_rl.training.warp_train:main"
+openarm-track-training = "openarm_rl.tracking.wandb_tracking:main"
+openarm-collect-act = "openarm_rl.imitation.data:main"
+openarm-train-act = "openarm_rl.training.act_train:main"
+openarm-train-act-residual = "openarm_rl.imitation.residual:main"
+openarm-distill-act = "openarm_rl.imitation.distill:main"
+openarm-evaluate-pickup = "openarm_rl.evaluation.pickup:main"
+openarm-train-pickup-residual = "openarm_rl.training.robust_pickup:main"
+openarm-train-strike = "openarm_rl.training.strike_train:main"
+openarm-train-skills = "openarm_rl.pipelines.skills:main"
+openarm-record-policy = "openarm_rl.recording.policy:main"
+openarm-policy-replay = "openarm_rl.deployment.replay:main"
+openarm-record-demo = "openarm_rl.recording.reference:main"
+openarm-showcase = "openarm_rl.recording.showcase:main"
+openarm-task-demo = "openarm_rl.demos.tasks:main"
+openarm-train-opendrummer = "openarm_rl.training.opendrummer_train:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["openarm_rl*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "../cartesian_console/src", "../../src"]

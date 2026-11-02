@@ -6,9 +6,9 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 
-from model import HoldController
-from taught import PoseStore, TaughtStrike
-from telemetry import DrumTelemetry, LABELS, ORDER
+from openarm_drummer.model import HoldController
+from openarm_drummer.taught import PoseStore, TaughtStrike
+from openarm_drummer.telemetry import DrumTelemetry, LABELS, ORDER
 
 
 class TeachingSession:
@@ -180,7 +180,7 @@ def native_app(name):
     if sys.platform == 'darwin' and Path(sys.executable).name != executable_name:
         import plistlib
         import shutil
-        from model import OUTPUT
+        from openarm_drummer.model import OUTPUT
         bundle = OUTPUT/f'OpenDrummer {name}.app'
         contents = bundle/'Contents'
         executable = contents/'MacOS'/executable_name
@@ -203,7 +203,7 @@ def native_app(name):
 
 
 def run_teaching(model, robot, scene):
-    from teach_panel import JogPanel
+    from openarm_drummer.teach_panel import JogPanel
     native_app('Teaching')
     session = TeachingSession(model,robot,scene)
     controls = NativeTeachingControls(session)
@@ -213,7 +213,7 @@ def run_teaching(model, robot, scene):
 
 def run_native_window(model, session, panel, controls, title):
     from PIL import Image
-    from run import frame_camera
+    from openarm_drummer.run import frame_camera
     panel.layout(850)
     if not glfw.init():
         raise RuntimeError('Could not initialize the native teaching window')

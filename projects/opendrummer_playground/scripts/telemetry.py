@@ -6,8 +6,8 @@ import time
 import mujoco
 import numpy as np
 
-from model import CONFIG, OUTPUT
-from strike import HitDetector, STRIKE_CONFIG
+from openarm_drummer.model import CONFIG, OUTPUT
+from openarm_drummer.strike import HitDetector, STRIKE_CONFIG
 
 LABELS = {'snare': 'Snare', 'floor_tom': 'Floor tom', 'rack_tom_left': 'Rack tom · L',
           'rack_tom_right': 'Rack tom · R', 'cymbal_left': 'Cymbal · L',

@@ -1,9 +1,9 @@
 # Cartesian Console
 
-OpenArm tabletop preview, ROS 2 robot execution, collision avoidance and skill
-learning. The console uses the shared `openarm_tools.ros_execution` interface
-for simulation and physical robot commands/feedback. Planning and training use
-MuJoCo locally. OMPL runs on CPU; cuRobo is optional.
+OpenArm tabletop preview, ROS 2 robot execution and collision avoidance.
+The console uses the shared `openarm_tools.ros_execution` interface for simulation
+and physical robot commands/feedback. Planning uses MuJoCo locally.
+OMPL runs on CPU; cuRobo is optional. Learning lives in [RL](../rl/README.md).
 
 Use the [fresh-checkout guide](docs/getting-started.md) for a complete CPU setup,
 first launch, feature recording and the physical connection placeholders.
@@ -88,34 +88,18 @@ For cuRobo, activate the environment and run
 `bash projects/cartesian_console/scripts/setup_curobo.sh` from the repository root;
 installation requires compatible CUDA.
 
-## Other demos and learning
+## Camera reach and learning
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 source .venv/bin/activate
-openarm-reach --scene pickup
-openarm-reach --scene strike
+openarm-reach
 ```
 
-For learning, activate a separate compatible Python 3.12 environment and install
-the corresponding extras:
-
-```bash
-python -m pip install -e './projects/cartesian_console[rl,gpu-sim,tracking,imitation,video,assets]'
-openarm-train-drum --help
-openarm-collect-act --help
-openarm-train-act --help
-openarm-train-pickup-residual --help
-openarm-distill-act --help
-openarm-train-strike --help
-openarm-record-policy --help
-```
-
-GPU training requires a compatible CUDA PyTorch installation. Training,
-collection and evaluation run serially within the shared compute budget.
-Opening a demo starts no training. Checkpoints and datasets are supplied through
-CLI paths; generated artifacts are stored under `runs/cartesian_console/`.
-Use a separate compatible environment for CUDA training dependencies.
+Task environments, ACT/PPO, visual distillation, policy recording and policy
+deployment are installed through [projects/rl](../rl/README.md). That project
+uses these simulation and motion interfaces. The console requires no learning
+package or PyTorch installation.
 
 ## ROS execution endpoints
 
@@ -136,7 +120,7 @@ The root `openarm_mujoco_sim` ROS-control launch supports
 | --- | --- |
 | [Installation and reproduction](docs/getting-started.md) | Setup, launch, checks and policy demonstration reproduction |
 | [Synchronization console](docs/sync-console.md) | Hardware placeholders, operator controls, saved targets and recording |
-| [Policy deployment](docs/policy-deployment.md) | RL/ACT action decoding, CAN joint/gripper calibration and command replay |
+| [RL and policy deployment](../rl/README.md) | Task environments, training, evaluation and action adapters |
 
 ## Verify
 
@@ -145,7 +129,6 @@ bash projects/cartesian_console/scripts/check_setup.sh
 bash projects/cartesian_console/scripts/check_setup.sh --gui
 ```
 
-The complete project suite additionally requires the learning/CUDA extras.
 cuRobo checks require generated planning assets. Asset-specific checks require
 the separately imported asset. Physical motor verification is performed on the
 actual reviewed hardware configuration.

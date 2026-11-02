@@ -5,7 +5,7 @@ import json
 
 import mujoco
 import numpy as np
-from model import CONFIG
+from openarm_drummer.model import CONFIG
 
 
 def plan_transfer(model, controller, start, goal, cancel=None, timeout=6.):

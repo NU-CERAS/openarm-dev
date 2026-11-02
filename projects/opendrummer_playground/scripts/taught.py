@@ -6,8 +6,8 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
-from model import CONFIG, OUTPUT, SOURCE, HoldController
-from strike import HitDetector, STRIKE_CONFIG, smooth
+from openarm_drummer.model import CONFIG, OUTPUT, SOURCE, HoldController
+from openarm_drummer.strike import HitDetector, STRIKE_CONFIG, smooth
 
 PRESETS = CONFIG.with_name('taught_poses.json')
 

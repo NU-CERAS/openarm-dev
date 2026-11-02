@@ -1,6 +1,5 @@
 """Live button dispatch, cancellation, and physical transfer planning checks."""
 from pathlib import Path
-import sys
 import tempfile
 import unittest
 
@@ -8,11 +7,10 @@ import glfw
 import mujoco
 import numpy as np
 
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from scene import build_scene
-from live_demo import LiveDemo,DemoPanel,DemoControls
-from transfers import plan_transfer
-from taught import TaughtStrike
+from openarm_drummer.scene import build_scene
+from openarm_drummer.live_demo import LiveDemo,DemoPanel,DemoControls
+from openarm_drummer.transfers import plan_transfer
+from openarm_drummer.taught import TaughtStrike
 
 
 class LiveDemoTests(unittest.TestCase):
