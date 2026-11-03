@@ -89,9 +89,9 @@ def add_axes(parent, origin, length=0.12, prefix='world'):
                       fromto=' '.join(map(str, [*origin, *end])), size='.002', rgba=color, group='3')
 
 
-def build_scene(collisions=True):
+def build_scene(collisions=True, configuration=None):
     _, robot_report = build()
-    cfg = json.loads(SCENE_CONFIG.read_text())
+    cfg = json.loads(SCENE_CONFIG.read_text()) if configuration is None else dict(configuration)
     elevation = float(cfg['robot_elevation_m'])
     support_xy = np.asarray(cfg['support_size_xy_m'], dtype=float)
     if not np.isfinite(elevation) or elevation <= 0:
@@ -205,7 +205,7 @@ def build_scene(collisions=True):
               'support_size_m': [*support_xy.tolist(), elevation],
               'kit_bounds_m': [transformed[used].min(0).tolist(), transformed[used].max(0).tolist()],
               'source_obj_sha256': hashlib.sha256((DRUMS/'drums.obj').read_bytes()).hexdigest(),
-              'scene_config_sha256': hashlib.sha256(SCENE_CONFIG.read_bytes()).hexdigest(),
+              'scene_config_sha256': hashlib.sha256(SCENE_CONFIG.read_bytes() if configuration is None else json.dumps(cfg, sort_keys=True).encode()).hexdigest(),
               'platform_removed_triangles': len(platform_faces), 'collision_enabled': False}
     if collisions:
         from openarm_drummer.collisions import add_collisions
@@ -245,6 +245,8 @@ def solve_approach(model, robot_report, scene_report, side, target_name, height=
         controller.reset(data)
         if attempt == 0 and seed is not None:
             data.qpos[controller.q] = seed
+            data.qpos[qids] = np.clip(data.qpos[qids], controller.bounds[selected, 0] + joint_margin,
+                                     controller.bounds[selected, 1] - joint_margin)
         elif attempt:
             data.qpos[qids] = rng.uniform(controller.bounds[selected, 0], controller.bounds[selected, 1])
         if wrist_angle is not None:

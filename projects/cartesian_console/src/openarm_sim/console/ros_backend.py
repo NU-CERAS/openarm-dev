@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 from contextlib import ExitStack
 import json
 from pathlib import Path
@@ -9,7 +10,9 @@ import time
 
 import numpy as np
 import rclpy
-from rclpy.executors import MultiThreadedExecutor
+from rclpy.executors import SingleThreadedExecutor
+from rclpy.parameter import Parameter
+from trajectory_msgs.msg import JointTrajectory as TrajectoryMessage
 
 from openarm_tools.recording.storage import lock
 from openarm_tools.robot.config import load, validate_positions
@@ -76,7 +79,7 @@ class RobotExecutionBackend:
         return Preview(trajectory, None, start)
 
     def validate(self, arm, message):
-        if self.worker.state == "executing":
+        if self.worker.state in ("executing", "streaming"):
             raise ValueError("Another robot trajectory is executing")
         self.plan(arm, message)
 
@@ -102,6 +105,7 @@ def main():
     parser = argparse.ArgumentParser(description="Execute standard ROS 2 joint trajectory actions with MuJoCo or CAN")
     parser.add_argument("--backend", choices=["demo", "can"], default="demo")
     parser.add_argument("--model", choices=["v1.0", "opendrummer"], default="v1.0")
+    parser.add_argument("--layout", type=Path)
     parser.add_argument("--hardware-config", type=Path)
     parser.add_argument("--supported", action="store_true")
     parser.add_argument("--show-plant", action="store_true")
@@ -116,7 +120,8 @@ def main():
         hardware_configuration(args.hardware_config)
     with ExitStack() as resources:
         resources.enter_context(lock(f"ros-execution:{args.namespace}"))
-        worker = RobotWorker(args.backend, args.hardware_config, args.drum_asset, robot_model=args.model)
+        worker = RobotWorker(args.backend, args.hardware_config, args.drum_asset, robot_model=args.model, layout_file=args.layout,
+                             isolate_physics=args.backend == "demo" and args.model == "opendrummer")
         resources.callback(worker.close)
         if not worker.ready.wait(10):
             raise TimeoutError("Robot execution backend did not become ready")
@@ -124,13 +129,33 @@ def main():
         rclpy.init(args=ros_args)
         resources.callback(rclpy.try_shutdown)
         node = RosExecutionServer(RobotExecutionBackend(worker), args.namespace)
+        node.declare_parameter("robot_model", args.model)
+        node.declare_parameter("layout_sha256", "")
+        def refresh_layout_identity():
+            signature = hashlib.sha256(args.layout.read_bytes()).hexdigest() if args.layout is not None and args.layout.is_file() else ""
+            if node.get_parameter("layout_sha256").value != signature:
+                node.set_parameters([Parameter("layout_sha256", Parameter.Type.STRING, signature)])
+        refresh_layout_identity()
+        node.layout_identity_timer = node.create_timer(.1, refresh_layout_identity)
+        if args.backend == "demo" and args.model == "opendrummer":
+            def stream(arm, message):
+                if message.joint_names != arm_joint_names(arm) or len(message.points) != 1:
+                    raise ValueError("Streaming requires one point with the selected arm's joint names")
+                point = message.points[0]
+                if point.accelerations or point.effort or message.header.stamp.sec or message.header.stamp.nanosec:
+                    raise ValueError("Streaming accepts relative position/velocity commands")
+                worker.servo(arm, point.positions, point.velocities)
+            node.servo_subscribers = [node.create_subscription(TrajectoryMessage, f"{arm}_joint_trajectory_controller/joint_trajectory",
+                                      lambda message, side=arm: stream(side, message), 1) for arm in ("left", "right")]
         resources.callback(node.destroy_node)
-        executor = MultiThreadedExecutor(num_threads=3)
+        executor = SingleThreadedExecutor()
         executor.add_node(node)
         resources.callback(executor.shutdown)
         if args.show_plant:
-            viewer = subprocess.Popen([sys.executable, "-m", "openarm_sim.console.ros_viewer", "--namespace", args.namespace,
-                                       "--model", args.model])
+            command = [sys.executable, "-m", "openarm_sim.console.ros_viewer", "--namespace", args.namespace, "--model", args.model]
+            if args.layout:
+                command += ["--layout", str(args.layout)]
+            viewer = subprocess.Popen(command)
             resources.callback(stop_viewer, viewer)
         print(json.dumps({"ros_execution": "ready", "backend": args.backend, "namespace": args.namespace}), flush=True)
         try:

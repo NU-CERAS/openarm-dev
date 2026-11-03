@@ -33,6 +33,10 @@ def add_collisions(model, scene_report, source_vertices, source_materials, split
     mujoco.mj_saveLastXML(str(path), model)
     tree = ET.parse(path)
     root = tree.getroot()
+    for index in range(model.njnt):
+        if model.jnt_limited[index]:
+            name = model.joint(index).name
+            root.find(f".//joint[@name='{name}']").set('range', ' '.join(repr(float(value)) for value in model.jnt_range[index]))
     root.find('compiler').set('fusestatic', 'false')
     root.find('compiler').set('inertiafromgeom', 'false')
     root.find('option').set('iterations', '100')

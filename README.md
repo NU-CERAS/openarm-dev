@@ -60,7 +60,7 @@ The equivalents in `scripts/` call the same shared implementation. Use `--help` 
 - `src/openarm_tools/`: shared configuration, backends, motion, calibration, recording.
 - `src/ros/`: ROS integration; `src/vendor/`: upstream sources.
 - `robots/`: explicitly versioned models, joint configuration, and reviewed poses.
-- `projects/`: clients of the shared tools. [Cartesian Console](projects/cartesian_console/README.md) provides camera reach and ROS execution; [RL](projects/rl/README.md) owns task environments, ACT/PPO and visual distillation; [OpenDrummer](projects/opendrummer_playground/README.md) supplies the drum scene and reference controllers.
+- `projects/`: clients of the shared tools. [Cartesian Console](projects/cartesian_console/README.md) provides TCP preview, drum annotation and ROS execution; [Drum Skill Learning](projects/drum_skill_learning/README.md) owns camera-free strike training, evaluation and policy deployment; [OpenDrummer](projects/opendrummer_playground/README.md) supplies the shared robot/drum scene and reference controllers.
 - `examples/`: small executable tutorials; `mechanical/`: CAD/documentation.
 - `docs/`: architecture and operation; `tests/`: behavior checks.
 - `runs/`: local simulation snapshots, calibration and saved poses; ignored by Git.

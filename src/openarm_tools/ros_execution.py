@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 import threading
 import time
 
@@ -13,6 +15,7 @@ from rclpy.context import Context
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
+from rclpy.task import Future
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
@@ -78,7 +81,7 @@ class ExecutionCancelled(Exception):
 
 
 class RosExecutionClient:
-    def __init__(self, namespace="", feedback_timeout=0.25):
+    def __init__(self, namespace="", feedback_timeout=0.25, background=False):
         self.context = Context()
         rclpy.init(context=self.context)
         self.node = Node("openarm_execution_client", namespace=namespace, context=self.context)
@@ -92,6 +95,23 @@ class RosExecutionClient:
                                                           qos_profile_sensor_data)
         self.actions = {arm: ActionClient(self.node, FollowJointTrajectory,
                                          f"{arm}_joint_trajectory_controller/follow_joint_trajectory") for arm in ARMS}
+        self.stop_spinner = threading.Event()
+        self.spinner = threading.Thread(target=self.spin, name="openarm-ros-feedback") if background else None
+        if self.spinner is not None:
+            self.spinner.start()
+
+    def spin(self):
+        while not self.stop_spinner.is_set():
+            self.executor.spin_once(timeout_sec=.01)
+
+    def pump(self, timeout):
+        if self.spinner is None:
+            self.executor.spin_once(timeout_sec=timeout)
+        else:
+            if not self.spinner.is_alive():
+                raise RuntimeError("ROS feedback executor stopped")
+            if timeout > 0:
+                self.stop_spinner.wait(min(timeout, .002))
 
     def feedback(self, message):
         required = [name for arm in ARMS for name in arm_joint_names(arm)]
@@ -110,23 +130,24 @@ class RosExecutionClient:
     def wait_ready(self, timeout=10):
         deadline = time.monotonic() + timeout
         while self.snapshot is None or not all(action.server_is_ready() for action in self.actions.values()):
-            self.executor.spin_once(timeout_sec=0.02)
+            self.pump(.02)
             if time.monotonic() > deadline:
                 raise TimeoutError("ROS execution actions and both-arm JointState feedback are required")
         self.read()
 
-    def read(self):
-        self.executor.spin_once(timeout_sec=0)
+    def read(self, wait=True):
+        self.pump(0)
         deadline = time.monotonic() + self.feedback_timeout
         while self.snapshot is None or time.monotonic() - self.snapshot.received_at > self.feedback_timeout:
-            if time.monotonic() >= deadline:
-                raise RuntimeError("ROS joint feedback is missing or stale")
-            self.executor.spin_once(timeout_sec=0.02)
+            if not wait or time.monotonic() >= deadline:
+                age = None if self.snapshot is None else time.monotonic() - self.snapshot.received_at
+                raise RuntimeError(f"ROS joint feedback is missing or stale: age_s={age}")
+            self.pump(.02)
         return self.snapshot
 
     def wait_future(self, future, deadline):
         while not future.done():
-            self.executor.spin_once(timeout_sec=0.02)
+            self.pump(.02)
             if time.monotonic() > deadline:
                 raise TimeoutError("ROS action response exceeded its deadline")
         return future.result()
@@ -146,22 +167,24 @@ class RosExecutionClient:
             while not result_future.done():
                 if cancel.is_set() and cancellation is None:
                     cancellation = handle.cancel_goal_async()
-                self.executor.spin_once(timeout_sec=0.02)
+                self.pump(.02)
                 publish(self.read())
                 if time.monotonic() > deadline:
                     raise TimeoutError("ROS trajectory execution exceeded its deadline")
             response = result_future.result()
-            if response.status == GoalStatus.STATUS_CANCELED:
-                raise ExecutionCancelled()
-            if response.status != GoalStatus.STATUS_SUCCEEDED or response.result.error_code != FollowJointTrajectory.Result.SUCCESSFUL:
+            cancelled = response.status == GoalStatus.STATUS_CANCELED
+            if not cancelled and (response.status != GoalStatus.STATUS_SUCCEEDED
+                                  or response.result.error_code != FollowJointTrajectory.Result.SUCCESSFUL):
                 raise RuntimeError(f"ROS trajectory failed: {response.result.error_string}")
             sequence = self.sequence
             deadline = time.monotonic() + 1
             while self.sequence == sequence:
-                self.executor.spin_once(timeout_sec=0.02)
+                self.pump(.02)
                 if time.monotonic() > deadline:
                     raise TimeoutError("No fresh JointState arrived after action completion")
             publish(self.read())
+            if cancelled:
+                raise ExecutionCancelled()
             return response.result
         finally:
             try:
@@ -174,6 +197,11 @@ class RosExecutionClient:
     def close(self):
         if self.active_goal is not None:
             raise RuntimeError("Cancel the active ROS goal before closing its client")
+        self.stop_spinner.set()
+        if self.spinner is not None:
+            self.spinner.join(timeout=2)
+            if self.spinner.is_alive():
+                raise TimeoutError("ROS feedback executor did not stop")
         self.executor.shutdown(timeout_sec=2)
         for action in self.actions.values():
             action.destroy()
@@ -186,12 +214,13 @@ class RosExecutionServer(Node):
         super().__init__("openarm_execution_server", namespace=namespace)
         self.backend = backend
         self.reservation = threading.Lock()
+        self.execution_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="openarm-trajectory")
         self.group = ReentrantCallbackGroup()
         self.publisher = self.create_publisher(JointState, "joint_states", 10)
         self.timer = self.create_timer(0.02, lambda: self.publish_state(), callback_group=self.group)
         self.servers = [ActionServer(self, FollowJointTrajectory,
                                     f"{arm}_joint_trajectory_controller/follow_joint_trajectory",
-                                    execute_callback=lambda handle, side=arm: self.execute(side, handle),
+                                    execute_callback=partial(self.execute, arm),
                                     goal_callback=lambda goal, side=arm: self.accept(side, goal),
                                     cancel_callback=lambda handle: CancelResponse.ACCEPT,
                                     callback_group=self.group) for arm in ARMS]
@@ -216,7 +245,21 @@ class RosExecutionServer(Node):
             return GoalResponse.REJECT
         return GoalResponse.ACCEPT
 
-    def execute(self, arm, handle):
+    async def execute(self, arm, handle):
+        pending = Future(executor=self.executor)
+        work = self.execution_pool.submit(self.execute_blocking, arm, handle)
+
+        def completed(result):
+            error = result.exception()
+            if error is not None:
+                pending.set_exception(error)
+            else:
+                pending.set_result(result.result())
+
+        work.add_done_callback(completed)
+        return await pending
+
+    def execute_blocking(self, arm, handle):
         result = FollowJointTrajectory.Result()
         started = time.monotonic()
 
@@ -250,6 +293,7 @@ class RosExecutionServer(Node):
         return result
 
     def destroy_node(self):
+        self.execution_pool.shutdown(wait=True)
         for server in self.servers:
             server.destroy()
         return super().destroy_node()

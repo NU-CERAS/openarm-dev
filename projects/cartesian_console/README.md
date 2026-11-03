@@ -3,7 +3,7 @@
 OpenArm and OpenDrummer TCP preview, ROS 2 robot execution and collision avoidance.
 The console uses the shared `openarm_tools.ros_execution` interface for simulation
 and physical robot commands/feedback. Planning uses MuJoCo locally.
-OMPL runs on CPU; cuRobo is optional. Learning lives in [RL](../rl/README.md).
+OMPL runs on CPU; cuRobo is optional. Learning lives in [Drum Skill Learning](../drum_skill_learning/README.md).
 
 Use the [fresh-checkout guide](docs/getting-started.md) for a complete CPU setup,
 first launch, feature recording and the physical connection placeholders.
@@ -35,6 +35,13 @@ IK, collision checking, preview error and feedback synchronization use this same
 point. The torso-top reference is derived from the fixed chassis mesh of the
 selected model. The v1.0 gripper model remains available with `--model v1.0`;
 its TCP remains at the hand.
+
+**Annotate drum layout** opens a separate panel for torso-relative drum-center
+coordinates, dragging drum proxies, registering a center at the measured tip
+and capturing measured ready joints. Save to `--layout PATH`; the owned MuJoCo
+backend refreshes the layout while idle. See the
+[annotation and drum skill guide](../drum_skill_learning/docs/camera-free-drumming.md)
+for the camera-free registration, training and ROS policy workflow.
 
 The English interface subscribes to `/joint_states` at startup and displays both arms' measured
 pose in a single native-resolution sim preview. Drag a TCP axis and release to
@@ -119,7 +126,7 @@ openarm-reach
 ```
 
 Task environments, ACT/PPO, visual distillation, policy recording and policy
-deployment are installed through [projects/rl](../rl/README.md). That project
+deployment are installed through [Drum Skill Learning](../drum_skill_learning/README.md). That project
 uses these simulation and motion interfaces. The console requires no learning
 package or PyTorch installation.
 
@@ -144,7 +151,7 @@ console model must match the backend's physical kinematics and tool mounting.
 | --- | --- |
 | [Installation and reproduction](docs/getting-started.md) | Setup, launch, checks and policy demonstration reproduction |
 | [Synchronization console](docs/sync-console.md) | Hardware placeholders, operator controls, saved targets and recording |
-| [RL and policy deployment](../rl/README.md) | Task environments, training, evaluation and action adapters |
+| [Drum skill learning and deployment](../drum_skill_learning/README.md) | Task environments, training, evaluation and action adapters |
 
 ## Verify
 

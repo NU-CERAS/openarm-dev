@@ -12,7 +12,7 @@ class OpenDrummerReachSimulation(ReachSimulation):
     robot_model = "opendrummer"
 
     def __init__(self, planner="ompl", drum_asset=None, worktable=False, tabletop_mount=False,
-                 planning_assets=RUNS / "planning/opendrummer/openarm.yml"):
+                 planning_assets=RUNS / "planning/opendrummer/openarm.yml", layout_file=None):
         if planner not in ("mink", "ompl", "curobo"):
             raise ValueError("Unknown motion planner")
         if drum_asset is not None:
@@ -62,9 +62,29 @@ class OpenDrummerReachSimulation(ReachSimulation):
         self._start_q = np.zeros(self.model.nu)
         self._goal_q = self._start_q.copy()
         self._motion_start = self._duration = self._stable_time = 0.0
+        self.raw_servo = {}
         self.reset_zero()
+        self.layout_file = layout_file
+        self.layout_stamp = None
+        self.reload_layout()
+
+    def reload_layout(self):
+        from pathlib import Path
+        from .annotation import DrumLayout
+
+        if self.layout_file is None or not Path(self.layout_file).is_file():
+            return
+        stamp = Path(self.layout_file).stat().st_mtime_ns
+        if stamp == self.layout_stamp:
+            return
+        layout = DrumLayout.load(self.layout_file, self)
+        layout.apply(self.model, self.scene_report)
+        mujoco.mj_forward(self.model, self.data)
+        self.motion_planner = None
+        self.layout_stamp = stamp
 
     def reset(self):
+        self.raw_servo.clear()
         mujoco.mj_resetData(self.model, self.data)
         mujoco.mj_forward(self.model, self.data)
         self._desired = np.zeros(self.model.nu)
@@ -79,4 +99,7 @@ class OpenDrummerReachSimulation(ReachSimulation):
         c = self.controller
         target = self._desired[c.a]
         torque = c.kp * (target - self.data.qpos[c.q]) - c.kd * self.data.qvel[c.v] + self.data.qfrc_bias[c.v]
+        for arm, velocity in self.raw_servo.items():
+            selected = slice(0, 7) if arm == "left" else slice(7, 14)
+            torque[selected] = c.kp[selected] * (target[selected] - self.data.qpos[c.q[selected]]) + c.kd[selected] * (velocity - self.data.qvel[c.v[selected]])
         self.data.ctrl[c.a] = np.clip(torque, -c.effort, c.effort)

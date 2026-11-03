@@ -346,11 +346,13 @@ class ReachSimulation:
         self.close()
 
 
-def reach_simulation(robot_model="v1.0", **options):
+def reach_simulation(robot_model="v1.0", layout_file=None, **options):
     if robot_model == "opendrummer":
         from .opendrummer import OpenDrummerReachSimulation
 
-        return OpenDrummerReachSimulation(**options)
+        return OpenDrummerReachSimulation(layout_file=layout_file, **options)
     if robot_model != "v1.0":
         raise ValueError("Unknown robot model")
+    if layout_file is not None:
+        raise ValueError("Drum layout requires OpenDrummer")
     return ReachSimulation(**options)

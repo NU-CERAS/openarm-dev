@@ -1,0 +1,16 @@
+{
+  "schema": "openarm.drum_joint_mapping.v1",
+  "hardware_reviewed": false,
+  "stream_watchdog_verified": false,
+  "robot_source_sha256": "",
+  "import_config_sha256": "",
+  "layout_sha256": "",
+  "command_interfaces": ["position", "velocity"],
+  "joint_order": ["lj1", "lj2", "lj3", "lj4", "lj5", "lj6", "lj7", "rj1", "rj2", "rj3", "rj4", "rj5", "rj6", "rj7"],
+  "sign": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  "zero_rad": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  "velocity_rad_s": [],
+  "acceleration_rad_s2": [],
+  "position_gains": [],
+  "velocity_gains": []
+}

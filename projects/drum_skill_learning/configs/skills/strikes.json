@@ -1,0 +1,12 @@
+{
+  "schema": "openarm.strike_skills.v1",
+  "skills": [
+    {"name": "strike_snare", "target": "snare", "arm": "left"},
+    {"name": "strike_rack_tom_left", "target": "rack_tom_left", "arm": "left"},
+    {"name": "strike_hi_hat", "target": "hi_hat", "arm": "left"},
+    {"name": "strike_cymbal_left", "target": "cymbal_left", "arm": "left"},
+    {"name": "strike_rack_tom_right", "target": "rack_tom_right", "arm": "right"},
+    {"name": "strike_floor_tom", "target": "floor_tom", "arm": "right"},
+    {"name": "strike_cymbal_right", "target": "cymbal_right", "arm": "right"}
+  ]
+}

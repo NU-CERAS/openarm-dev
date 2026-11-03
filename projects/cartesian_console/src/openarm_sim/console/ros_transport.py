@@ -4,6 +4,7 @@ import time
 import numpy as np
 
 from openarm_tools.ros_execution import ExecutionCancelled, RosExecutionClient, trajectory_message
+from openarm_tools.recording.storage import lock
 
 from .session import Feedback, MotionCancelled, check_start
 
@@ -11,6 +12,7 @@ from .session import Feedback, MotionCancelled, check_start
 class RosPlant:
     def __init__(self, namespace=""):
         self.client = RosExecutionClient(namespace)
+        self.namespace = self.client.node.get_namespace()
         with ExitStack() as resources:
             resources.callback(self.client.close)
             self.client.wait_ready()
@@ -28,6 +30,10 @@ class RosPlant:
         return self.read()
 
     def execute(self, plan, cancel, publish):
+        with lock(f"ros-command:{self.namespace}"):
+            return self.execute_owned(plan, cancel, publish)
+
+    def execute_owned(self, plan, cancel, publish):
         check_start(plan, self.read())
         trajectory = plan.trajectory
         message = trajectory_message(trajectory.arm, trajectory.times, trajectory.positions, trajectory.velocities)

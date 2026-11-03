@@ -81,10 +81,17 @@ def check_start(plan: Preview, feedback: Feedback, tolerance=0.03):
 
 
 class MujocoPlant:
-    def __init__(self, scene=None, realtime=True, show_viewer=False, robot_model="v1.0"):
-        self.sim = reach_simulation(robot_model, drum_asset=scene, worktable=scene is None, tabletop_mount=scene is None)
+    def __init__(self, scene=None, realtime=True, show_viewer=False, robot_model="v1.0", layout_file=None):
+        self.sim = reach_simulation(robot_model, layout_file=layout_file, drum_asset=scene, worktable=scene is None, tabletop_mount=scene is None)
         self.sim.reset_zero()
+        self.servo_bounds = self.sim.controller.bounds.copy() if robot_model == "opendrummer" else None
+        self.servo_velocity = self.sim.controller.velocity.copy() if robot_model == "opendrummer" else None
         self.realtime = realtime
+        self.stream_clock_origin = None
+        self.last_idle_duration = 0.0
+        self.last_idle_cpu = 0.0
+        self.last_idle_steps = 0
+        self.last_idle_finished = time.monotonic()
         self.viewer = None
         if show_viewer:
             from .plant_window import MujocoPlantWindow
@@ -99,9 +106,46 @@ class MujocoPlant:
                         time.monotonic())
 
     def idle(self):
-        for _ in range(round(0.02 / self.sim.model.opt.timestep)):
+        entered = time.monotonic()
+        cpu_started = time.thread_time()
+        if self.sim.robot_model == "opendrummer" and not self.sim.raw_servo:
+            self.sim.reload_layout()
+        period = .01 if getattr(self.sim, "raw_servo", {}) else .02
+        if getattr(self.sim, "raw_servo", {}):
+            now = time.monotonic()
+            if self.stream_clock_origin is None:
+                self.stream_clock_origin = now - self.sim.data.time - .01
+            period = now - self.stream_clock_origin - self.sim.data.time
+            if period > .1:
+                raise RuntimeError(f"Native servo physics missed its control deadline: lag={period:.3f}s, simulation_time={self.sim.data.time:.3f}s, previous_physics={self.last_idle_duration:.3f}s, previous_cpu={self.last_idle_cpu:.3f}s, previous_steps={self.last_idle_steps}, scheduling_gap={entered-self.last_idle_finished:.3f}s")
+        else:
+            self.stream_clock_origin = None
+        self.last_idle_steps = max(0, round(period / self.sim.model.opt.timestep))
+        for _ in range(self.last_idle_steps):
             self.sim.step()
-        return self.read()
+        result = self.read()
+        self.last_idle_duration = time.monotonic() - entered
+        self.last_idle_cpu = time.thread_time() - cpu_started
+        self.last_idle_finished = time.monotonic()
+        return result
+
+    def servo(self, arm, positions, velocities):
+        if self.sim.robot_model != "opendrummer":
+            raise ValueError("Streaming drum control requires OpenDrummer")
+        self.sim._desired[self.sim.actuator_ids[arm]] = positions
+        self.sim.raw_servo[arm] = np.asarray(velocities)
+
+    def servos(self, commands):
+        for arm, (positions, velocities) in commands.items():
+            self.servo(arm, positions, velocities)
+
+    def stop_servo(self):
+        if self.sim.robot_model != "opendrummer":
+            return
+        for arm in self.sim.raw_servo:
+            self.sim._desired[self.sim.actuator_ids[arm]] = self.sim.data.qpos[self.sim.qpos_ids[arm]]
+        self.sim.raw_servo.clear()
+        self.stream_clock_origin = None
 
     def execute(self, plan, cancel, publish):
         check_start(plan, self.read())
@@ -110,7 +154,21 @@ class MujocoPlant:
         started = time.monotonic()
         for step in range(int(np.ceil((trajectory.duration + 1.0) / 0.02)) + 1):
             if cancel.is_set():
-                self.sim._desired[self.sim.actuator_ids[trajectory.arm]] = self.read().positions[trajectory.arm]
+                target = self.read().positions[trajectory.arm].copy()
+                self.sim._desired[self.sim.actuator_ids[trajectory.arm]] = target
+                hold_started = time.monotonic()
+                for hold_step in range(50):
+                    for _ in range(round(.02 / self.sim.model.opt.timestep)):
+                        self.sim.step()
+                    measured = self.read()
+                    publish(measured)
+                    if (np.max(np.abs(measured.velocities[trajectory.arm])) < .005
+                            and np.max(np.abs(measured.positions[trajectory.arm] - target)) < .003):
+                        break
+                    if self.realtime:
+                        time.sleep(max(0., hold_started + (hold_step + 1)*.02 - time.monotonic()))
+                else:
+                    raise RuntimeError("Cancelled MuJoCo arm did not settle at its measured hold pose")
                 raise MotionCancelled()
             elapsed = step * 0.02
             desired = trajectory.sample(elapsed)
@@ -136,15 +194,31 @@ class MujocoPlant:
         self.sim.close()
 
 
-def run_mujoco_plant(connection, cancel, scene, realtime, robot_model):
-    plant = MujocoPlant(scene, realtime, show_viewer=True, robot_model=robot_model)
+def run_mujoco_plant(connection, cancel, scene, realtime, robot_model, layout_file, show_viewer):
+    plant = MujocoPlant(scene, realtime, show_viewer=show_viewer, robot_model=robot_model, layout_file=layout_file)
+    autonomous = robot_model == "opendrummer" and not show_viewer
+    next_step = time.monotonic()
+    received = {}
     try:
-        connection.send(("result", None))
+        connection.send(("result", {"servo_bounds": plant.servo_bounds, "servo_velocity": plant.servo_velocity}))
         while True:
+            if autonomous:
+                now = time.monotonic()
+                if now >= next_step:
+                    if plant.sim.raw_servo and (set(received) != set(ARMS) or any(now-stamp > .1 for stamp in received.values())):
+                        plant.stop_servo()
+                        received.clear()
+                    plant.idle()
+                    next_step = time.monotonic() + (.005 if plant.sim.raw_servo else .02)
+                if not connection.poll(max(0., next_step - time.monotonic())):
+                    continue
             operation, payload = connection.recv()
             if operation == "close":
                 break
             if operation == "execute":
+                if autonomous:
+                    plant.stop_servo()
+                    received.clear()
                 try:
                     result = plant.execute(payload, cancel, lambda feedback: connection.send(("feedback", feedback)))
                 except MotionCancelled:
@@ -153,7 +227,15 @@ def run_mujoco_plant(connection, cancel, scene, realtime, robot_model):
             elif operation == "read":
                 result = plant.read()
             elif operation == "idle":
-                result = plant.idle()
+                result = plant.read() if autonomous else plant.idle()
+            elif operation == "servo":
+                result = plant.servo(*payload)
+                received[payload[0]] = time.monotonic()
+            elif operation == "servos":
+                result = plant.servos(payload)
+                received = {arm: time.monotonic() for arm in payload}
+            elif operation == "stop_servo":
+                result = plant.stop_servo()
             else:
                 raise ValueError(f"Unknown MuJoCo plant operation: {operation}")
             connection.send(("result", result))
@@ -163,17 +245,19 @@ def run_mujoco_plant(connection, cancel, scene, realtime, robot_model):
 
 
 class MujocoProcessPlant:
-    def __init__(self, scene=None, realtime=True, robot_model="v1.0"):
+    def __init__(self, scene=None, realtime=True, robot_model="v1.0", layout_file=None, show_viewer=True):
         context = multiprocessing.get_context("spawn")
         self.connection, child = context.Pipe()
         self.cancel_event = context.Event()
-        self.process = context.Process(target=run_mujoco_plant, args=(child, self.cancel_event, scene, realtime, robot_model),
+        self.process = context.Process(target=run_mujoco_plant, args=(child, self.cancel_event, scene, realtime, robot_model, layout_file, show_viewer),
                                        name="openarm-mujoco-robot")
         self.process.start()
         child.close()
         with ExitStack() as cleanup:
             cleanup.callback(self.close)
-            self.receive()
+            metadata = self.receive()
+            self.servo_bounds = metadata["servo_bounds"]
+            self.servo_velocity = metadata["servo_velocity"]
             cleanup.pop_all()
 
     def receive(self, cancel=None, publish=None):
@@ -204,6 +288,18 @@ class MujocoProcessPlant:
 
     def idle(self):
         self.connection.send(("idle", None))
+        return self.receive()
+
+    def servo(self, arm, positions, velocities):
+        self.connection.send(("servo", (arm, positions, velocities)))
+        return self.receive()
+
+    def servos(self, commands):
+        self.connection.send(("servos", commands))
+        return self.receive()
+
+    def stop_servo(self):
+        self.connection.send(("stop_servo", None))
         return self.receive()
 
     def execute(self, plan, cancel, publish):
@@ -332,7 +428,7 @@ class CanPlant:
 
 
 class RobotWorker:
-    def __init__(self, backend="demo", configuration=None, scene=None, realtime=True, show_plant=False, ros_namespace="", robot_model="v1.0"):
+    def __init__(self, backend="demo", configuration=None, scene=None, realtime=True, show_plant=False, ros_namespace="", robot_model="v1.0", layout_file=None, isolate_physics=False):
         if robot_model not in ("v1.0", "opendrummer"):
             raise ValueError("Unknown robot model")
         if backend == "can" and robot_model != "v1.0":
@@ -353,8 +449,11 @@ class RobotWorker:
         self.configuration = configuration
         self.scene = scene
         self.robot_model = robot_model
+        self.layout_file = layout_file
+        self.servo_pending = {}
         self.realtime = realtime
         self.show_plant = show_plant
+        self.isolate_physics = isolate_physics
         self.ros_namespace = ros_namespace
         self.thread = threading.Thread(target=self._run, name="openarm-robot-transport", daemon=False)
         self.thread.start()
@@ -379,18 +478,31 @@ class RobotWorker:
 
                 plant = RosPlant(self.ros_namespace)
             elif self.backend == "demo":
-                plant = (MujocoProcessPlant(self.scene, self.realtime, self.robot_model) if self.show_plant
-                         else MujocoPlant(self.scene, self.realtime, robot_model=self.robot_model))
+                plant = (MujocoProcessPlant(self.scene, self.realtime, self.robot_model, self.layout_file, show_viewer=self.show_plant)
+                         if self.show_plant or self.isolate_physics
+                         else MujocoPlant(self.scene, self.realtime, robot_model=self.robot_model, layout_file=self.layout_file))
             else:
                 plant = CanPlant(self.configuration)
+            if self.backend == "demo" and self.robot_model == "opendrummer" and not self.show_plant:
+                self.servo_bounds = plant.servo_bounds.copy()
+                self.servo_velocity = plant.servo_velocity.copy()
             resources.callback(plant.close)
             self._publish(plant.read())
             self.state = "connected"
             self.ready.set()
             while not self.stop_event.is_set():
                 try:
-                    plan = self.commands.get(timeout=0.02)
+                    plan = self.commands.get(timeout=.005 if self.servo_pending else .02)
                 except queue.Empty:
+                    with self.mutex:
+                        self.servo_pending = {arm: item for arm, item in self.servo_pending.items() if time.monotonic() - item[2] < .1}
+                        fresh = dict(self.servo_pending)
+                    if set(fresh) == set(ARMS):
+                        plant.servos({arm: (positions, velocities) for arm, (positions, velocities, _) in fresh.items()})
+                        self.state = "streaming"
+                    elif self.state == "streaming":
+                        plant.stop_servo()
+                        self.state = "connected"
                     self._publish(plant.idle())
                     continue
                 try:
@@ -419,8 +531,23 @@ class RobotWorker:
             raise RuntimeError("Robot feedback is missing or stale")
         return result
 
-    def execute(self, plan):
+    def servo(self, arm, positions, velocities):
+        if self.backend != "demo" or self.robot_model != "opendrummer" or self.show_plant:
+            raise ValueError("Use a reviewed ROS position/velocity controller for physical streaming")
         if self.state == "executing":
+            raise RuntimeError("Finish the active trajectory before streaming")
+        positions, velocities = np.asarray(positions), np.asarray(velocities)
+        if positions.shape != (7,) or velocities.shape != (7,) or not np.isfinite([positions, velocities]).all():
+            raise ValueError("Servo command requires seven finite positions and velocities")
+        selected = slice(0, 7) if arm == "left" else slice(7, 14)
+        bounds = self.servo_bounds[selected]
+        if np.any(positions < bounds[:, 0]) or np.any(positions > bounds[:, 1]) or np.any(np.abs(velocities) > self.servo_velocity[selected]):
+            raise ValueError("Servo command exceeds the selected model limits")
+        with self.mutex:
+            self.servo_pending[arm] = (positions.copy(), velocities.copy(), time.monotonic())
+
+    def execute(self, plan):
+        if self.state in ("executing", "streaming"):
             raise RuntimeError("A trajectory is already executing")
         check_start(plan, self.read())
         self.cancel_event.clear()
@@ -443,12 +570,12 @@ class RobotWorker:
 
 
 class SyncSession:
-    def __init__(self, worker: RobotWorker, planner="ompl", scene=None, speed=0.2, acceleration=0.5, robot_model="v1.0"):
+    def __init__(self, worker: RobotWorker, planner="ompl", scene=None, speed=0.5, acceleration=1.2, robot_model="v1.0", layout_file=None):
         if not 0 < speed <= 0.6 or not 0 < acceleration <= 1.5:
             raise ValueError("Invalid trajectory speed or acceleration limit")
         self.worker = worker
-        self.twin = reach_simulation(robot_model, drum_asset=scene, worktable=scene is None, tabletop_mount=scene is None)
-        self.preview = reach_simulation(robot_model, planner=planner, drum_asset=scene, worktable=scene is None, tabletop_mount=scene is None)
+        self.twin = reach_simulation(robot_model, layout_file=layout_file, drum_asset=scene, worktable=scene is None, tabletop_mount=scene is None)
+        self.preview = reach_simulation(robot_model, layout_file=layout_file, planner=planner, drum_asset=scene, worktable=scene is None, tabletop_mount=scene is None)
         reference = getattr(self.twin, "body_reference", BODY_REFERENCE)
         site = self.twin.model.site(reference["site"]).id
         if self.twin.model.site_bodyid[site] != self.twin.model.body(reference["body"]).id:
@@ -484,7 +611,7 @@ class SyncSession:
         if trajectory is None:
             initial = start.positions[arm]
             final = self.preview._goal_q[self.preview.actuator_ids[arm]]
-            duration = max(1.2, 1.875 * float(np.max(np.abs(final - initial))) / self.speed,
+            duration = max(.6, 1.875 * float(np.max(np.abs(final - initial))) / self.speed,
                            np.sqrt(5.8 * float(np.max(np.abs(final - initial))) / self.acceleration))
             times = np.linspace(0, duration, 101)
             phase = times / duration

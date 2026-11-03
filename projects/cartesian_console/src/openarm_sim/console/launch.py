@@ -37,7 +37,10 @@ def main():
     parser.add_argument("--supported", action="store_true")
     parser.add_argument("--show-plant", action="store_true")
     parser.add_argument("--drum-asset", type=Path)
+    parser.add_argument("--layout", type=Path)
     args, console_args = parser.parse_known_args()
+    if args.layout is None and args.model == "opendrummer":
+        args.layout = RUNS / "annotations/drum_layout.json"
     if args.namespace is None:
         args.namespace = f"/openarm_demo_{uuid.uuid4().hex[:10]}" if args.target == "demo" else ""
     if args.target != "demo" and (args.show_plant or "--smoke-test" in console_args):
@@ -65,6 +68,8 @@ def main():
                 command.append("--supported")
             if args.drum_asset:
                 command += ["--drum-asset", str(args.drum_asset)]
+            if args.layout:
+                command += ["--layout", str(args.layout)]
             process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
             resources.callback(stop_backend, process)
             print(json.dumps({"execution_backend_log": str(directory / "backend.log")}), flush=True)
@@ -78,6 +83,8 @@ def main():
             command.append("--physical")
         if args.drum_asset:
             command += ["--drum-asset", str(args.drum_asset)]
+        if args.layout:
+            command += ["--layout", str(args.layout)]
         subprocess.run(command, check=True)
 
 

@@ -109,5 +109,5 @@ there is no object perception.
 - `--planner mink` uses IK/interpolation; default `ompl` performs collision-checked planning.
 - `scripts/setup_curobo.sh` installs optional CUDA planning; select `--planner curobo`.
 - `openarm-reach` opens camera-image surface selection for reach/kit scenes.
-- [RL](../../rl/README.md) provides task previews, ACT/PPO, visual distillation,
+- [Drum Skill Learning](../../drum_skill_learning/README.md) provides task previews, ACT/PPO, visual distillation,
   learned-policy recording, reference showcases and policy deployment.

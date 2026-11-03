@@ -23,6 +23,14 @@ def test_stick_tip_is_planning_tcp():
             np.testing.assert_allclose(probe.site_xpos[sim.site_ids[arm]], target, atol=.002)
 
 
+def test_joint_ranges_match_source_limits():
+    with reach_simulation("opendrummer", planner="mink") as sim:
+        for arm in ("left", "right"):
+            expected = np.array([[sim.robot_report["limits"][f"{arm[0]}j{i}"][key]
+                                  for key in ("lower", "upper")] for i in range(1, 8)])
+            np.testing.assert_allclose(sim.model.jnt_range[sim.joint_ids[arm]], expected, atol=1e-12, rtol=0)
+
+
 @pytest.mark.skipif(importlib.util.find_spec("yourdfpy") is None, reason="Requires cuRobo export dependencies")
 @pytest.mark.parametrize("robot_model", ["v1.0", "opendrummer"])
 def test_planning_export_retains_tip_frames(tmp_path, robot_model):

@@ -204,7 +204,7 @@ Startup applies this reviewed mapping. Encoder readings alone do not determine
 a mechanical zero or an external object's location. The existing `openarm zero`
 command records a separate operator-relative software reference.
 
-See [policy deployment](../../rl/docs/policy-deployment.md) for continuous RL/ACT command
+See [policy deployment](../../drum_skill_learning/docs/policy-deployment.md) for continuous RL/ACT command
 execution and calibrated gripper control through the same CAN backend.
 
 Once those machine-specific settings are complete, this command starts the

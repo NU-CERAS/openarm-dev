@@ -42,6 +42,8 @@ class SyncConsole:
         self.tick_callback = None
         self.updating_coordinates = False
         self.drag = None
+        self.annotation = None
+        self.layout_path = RUNS / "annotations/drum_layout.json"
         self.drag_target = None
         self.drag_changed = False
         self.gizmo_handles = {}
@@ -120,6 +122,7 @@ class SyncConsole:
         ttk.Label(side, text="Origin: torso top center", style="Muted.TLabel").pack(anchor="w", pady=(0, 6))
         if self.session.twin.robot_model == "opendrummer":
             ttk.Label(side, text="TCP: drumstick striking tip", style="Muted.TLabel").pack(anchor="w", pady=(0, 6))
+            ttk.Button(side, text="Annotate drum layout", command=self.open_annotation).pack(fill="x", pady=4)
         arms = ttk.Frame(side)
         arms.pack(fill="x")
         for arm, label in (("right", "Right arm"), ("left", "Left arm")):
@@ -176,6 +179,14 @@ class SyncConsole:
     def action(self, event, **details):
         self.feedback_log.write(json.dumps({"event": event, "timestamp_unix": time.time(), **details}) + "\n")
         self.feedback_log.flush()
+
+    def open_annotation(self):
+        if self.annotation is None:
+            from .annotation_panel import AnnotationPanel
+
+            self.annotation = AnnotationPanel(self, self.layout_path)
+        else:
+            self.annotation.window.lift()
 
     def invalidate(self, *_):
         if self.updating_coordinates:
@@ -364,6 +375,9 @@ class SyncConsole:
         self.drag_target = None
         self.canvas.configure(cursor="crosshair")
         if changed:
+            if self.annotation is not None and self.annotation.drag_enabled.get():
+                self.annotation.drag_to(self.session.reference.to_world([float(v.get()) for v in self.coordinates]))
+                return
             self.action("drag_finished", axis="XYZ"[axis], target_relative_cm=[float(v.get()) for v in self.coordinates])
             self.plan()
         else:
@@ -444,7 +458,8 @@ class SyncConsole:
         if self.drag is not None:
             anchor = self.drag_target
         else:
-            anchor = sim.tcp_position(self.arm.get())
+            anchor = (self.annotation.layout.center(self.annotation.target.get())
+                      if self.annotation is not None and self.annotation.drag_enabled.get() else sim.tcp_position(self.arm.get()))
         origin = self.visible_pixel(camera, anchor)
         if origin is None:
             return
@@ -464,7 +479,9 @@ class SyncConsole:
             self.canvas.create_text(end[0], end[1] - 15, text=axis, fill=color,
                                     font=("DejaVu Sans", 13, "bold"), tags="gizmo")
         if self.session.plan is None:
-            self.canvas.create_text(origin[0] + 14, origin[1] + 18, anchor="nw", text="Drag TCP axes",
+            label = (f"Drag {self.annotation.target.get()} center" if self.annotation is not None and self.annotation.drag_enabled.get()
+                     else "Drag TCP axes")
+            self.canvas.create_text(origin[0] + 14, origin[1] + 18, anchor="nw", text=label,
                                     fill="white", font=("DejaVu Sans", 11, "bold"), tags="gizmo")
 
     def _overlay(self, camera, sim):
@@ -586,9 +603,11 @@ def main():
     parser.add_argument("--physical", action="store_true", help="Identify the connected ROS execution backend as physical hardware")
     parser.add_argument("--planner", choices=["ompl", "mink", "curobo"], default="ompl")
     parser.add_argument("--model", choices=["v1.0", "opendrummer"], default="v1.0")
+    parser.add_argument("--layout", type=Path)
     parser.add_argument("--drum-asset", type=Path)
     parser.add_argument("--targets", type=Path, default=RUNS / "sync/targets.json")
-    parser.add_argument("--speed", type=float, default=0.2)
+    parser.add_argument("--speed", type=float, default=0.5)
+    parser.add_argument("--acceleration", type=float, default=1.2)
     parser.add_argument("--record", type=Path, help="Record an independent MuJoCo demo without opening Tk")
     parser.add_argument("--smoke-test", action="store_true", help="Exercise TCP preview, explicit execution and feedback synchronization")
     args = parser.parse_args()
@@ -606,8 +625,11 @@ def main():
         if not worker.ready.wait(10):
             raise TimeoutError("Robot connection did not become ready")
         worker.read()
-        session = SyncSession(worker, args.planner, args.drum_asset, args.speed, robot_model=args.model)
+        session = SyncSession(worker, args.planner, args.drum_asset, args.speed, args.acceleration,
+                              robot_model=args.model, layout_file=args.layout)
         console = SyncConsole(session, args.targets)
+        if args.layout is not None:
+            console.layout_path = args.layout
         print(json.dumps({"sync_console": "ready", "backend": "ros2", "planner": args.planner,
                           "namespace": args.namespace, "physical": args.physical,
                           "render_resolution": [console.width, console.height], "session": str(console.session_directory)}), flush=True)
