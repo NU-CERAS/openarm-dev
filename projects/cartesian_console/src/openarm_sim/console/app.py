@@ -17,6 +17,7 @@ from ..execution import joint_names
 from ..paths import RUNS
 from .session import RobotWorker, SyncSession
 from .gizmo import AxisDrag, hit_axis
+from .camera_controls import CameraControls
 
 
 class SyncConsole:
@@ -42,6 +43,7 @@ class SyncConsole:
         self.tick_callback = None
         self.updating_coordinates = False
         self.drag = None
+        self.camera_drag = None
         self.annotation = None
         self.layout_path = RUNS / "annotations/drum_layout.json"
         self.drag_target = None
@@ -87,7 +89,7 @@ class SyncConsole:
         self.name.trace_add("write", self.update_load_button)
         self.refresh_names()
         self.canvas.bind("<Configure>", self.schedule_resize)
-        self.root.bind("<Escape>", lambda event: self.cancel_drag())
+        self.root.bind("<Escape>", lambda event: (self.cancel_drag(), self.camera_up()))
         self.tick()
 
     def _style(self):
@@ -169,6 +171,15 @@ class SyncConsole:
         self.canvas.bind("<B1-Motion>", self.pointer_move)
         self.canvas.bind("<ButtonRelease-1>", self.pointer_up)
         self.canvas.bind("<Motion>", self.pointer_hover)
+        for button in (2, 3):
+            self.canvas.bind(f"<ButtonPress-{button}>", self.camera_down)
+            self.canvas.bind(f"<B{button}-Motion>", self.camera_move)
+            self.canvas.bind(f"<ButtonRelease-{button}>", self.camera_up)
+        self.canvas.bind("<MouseWheel>", self.camera_scroll)
+        self.canvas.bind("<Button-4>", self.camera_scroll)
+        self.canvas.bind("<Button-5>", self.camera_scroll)
+        ttk.Label(scene, text="View: drag background to rotate | Right drag: pan | Middle drag / wheel: zoom | Shift: horizontal motion",
+                  style="Muted.TLabel", wraplength=self.width - 20).pack(fill="x", pady=(5, 0))
         ttk.Label(scene, textvariable=self.message, style="Status.TLabel", wraplength=self.width - 20).pack(fill="x", pady=(8, 0))
         footer = ttk.Frame(self.root, padding=(18, 4, 18, 10))
         footer.pack(fill="x")
@@ -287,6 +298,7 @@ class SyncConsole:
 
     def view(self, overview):
         self.cancel_drag()
+        self.camera_up()
         for index, sim in enumerate((self.session.preview,)):
             look_height = 0.25 if sim.tabletop_mount else 0.48
             values = (np.array([1.55, 1.15, 1.25]), np.array([0.25, 0, look_height]), 48) if overview else self.camera_defaults[index]
@@ -304,6 +316,7 @@ class SyncConsole:
         if self.closed or (width, height) == (self.width, self.height):
             return
         self.cancel_drag()
+        self.camera_up()
         for camera in self.cameras:
             camera.close()
         for sim in (self.session.preview,):
@@ -315,20 +328,19 @@ class SyncConsole:
         self.frame = None
 
     def pointer_hover(self, event):
-        if self.drag is None:
+        if self.drag is None and self.camera_drag is None:
             selected = hit_axis((event.x, event.y), self.gizmo_handles)
             self.canvas.configure(cursor="hand2" if selected is not None else "crosshair")
 
     def pointer_down(self, event):
-        if self.session.worker.state == "executing" or self.frame is None:
-            self.message.set("Wait for the current move, or choose Stop.")
+        if self.frame is None:
             return
         axis = hit_axis((event.x, event.y), self.gizmo_handles)
-        if axis is None:
-            if self.gizmo_origin is not None and np.linalg.norm(np.array([event.x, event.y]) - self.gizmo_origin) < 13:
-                self.message.set("Drag one of the colored X, Y or Z arrows.")
-                return
-            self.message.set("Drag one of the colored X, Y or Z arrows.")
+        if axis is None or event.state & 1:
+            self.camera_down(event)
+            return
+        if self.session.worker.state == "executing":
+            self.message.set("Wait for the current move, or choose Stop.")
             return
         self.canvas.focus_set()
         camera = self.cameras[self.frame_index]
@@ -350,6 +362,9 @@ class SyncConsole:
         self.action("drag_started", axis="XYZ"[axis], origin_cm=self.session.reference.from_world(drag.origin).tolist())
 
     def pointer_move(self, event):
+        if self.camera_drag is not None:
+            self.camera_move(event)
+            return
         if self.drag is None:
             return
         if not 0 <= event.x < self.width or not 0 <= event.y < self.height:
@@ -366,6 +381,9 @@ class SyncConsole:
             variable.set(f"{value:.2f}")
 
     def pointer_up(self, event):
+        if self.camera_drag is not None:
+            self.camera_up(event)
+            return
         if self.drag is None:
             return
         self.pointer_move(event)
@@ -383,6 +401,43 @@ class SyncConsole:
         else:
             self.update_execute_button()
             self.message.set("Drag an axis arrow to change the TCP target.")
+
+    def camera_down(self, event):
+        if self.drag is not None or self.camera_drag is not None:
+            return "break"
+        button = event.num
+        if button not in (1, 2, 3):
+            return "break"
+        horizontal = bool(event.state & 1)
+        action = (mujoco.mjtMouse.mjMOUSE_ZOOM if button == 2 else
+                  mujoco.mjtMouse.mjMOUSE_MOVE_H if button == 3 and horizontal else
+                  mujoco.mjtMouse.mjMOUSE_MOVE_V if button == 3 else
+                  mujoco.mjtMouse.mjMOUSE_ROTATE_H if horizontal else mujoco.mjtMouse.mjMOUSE_ROTATE_V)
+        self.camera_drag = (CameraControls(self.session.preview), action, event.x, event.y)
+        self.canvas.focus_set()
+        self.canvas.configure(cursor="fleur")
+        return "break"
+
+    def camera_move(self, event):
+        if self.camera_drag is None:
+            return "break"
+        controls, action, x, y = self.camera_drag
+        controls.move(action, (event.x-x)/self.height, (event.y-y)/self.height)
+        self.camera_drag = (controls, action, event.x, event.y)
+        return "break"
+
+    def camera_up(self, event=None):
+        self.camera_drag = None
+        self.canvas.configure(cursor="crosshair")
+        return "break"
+
+    def camera_scroll(self, event):
+        if self.drag is not None or self.camera_drag is not None:
+            return "break"
+        amount = 1 if event.num == 4 else -1 if event.num == 5 else event.delta/120
+        if amount:
+            CameraControls(self.session.preview).move(mujoco.mjtMouse.mjMOUSE_ZOOM, 0., .05*amount)
+        return "break"
 
     def cancel_drag(self):
         if self.drag is None:
