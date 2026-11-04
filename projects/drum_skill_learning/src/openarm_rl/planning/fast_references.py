@@ -17,7 +17,7 @@ def calibrate(scene, profile_file, output):
     profile = json.loads(profile_file.read_text())
     target = profile["target"]
     measurements = []
-    with CameraFreeStrikeEnv(scene, profile_file, target=target, position_range=0, domain_range=0) as env:
+    with CameraFreeStrikeEnv(scene, profile_file, target=target, arm=profile["arm"], position_range=0, domain_range=0) as env:
         for depth in (.001, .003, .006):
             cfg = {**profile["configuration"], "command_depth_m": depth}
             plan = plan_wrist_strike(env.model, env.robot, env.scene, cfg, seed=np.array(profile["impact_seed"]),

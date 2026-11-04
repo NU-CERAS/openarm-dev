@@ -13,6 +13,7 @@ class JointReference:
     contact_multiplier: float = .45
     compliance_seconds: float = .08
     velocities: np.ndarray | None = None
+    active_joints: tuple[int, ...] | None = None
 
     def __post_init__(self):
         self.times = np.asarray(self.times, dtype=float)
@@ -23,9 +24,13 @@ class JointReference:
             raise ValueError("Reference values must be finite and times strictly increasing")
         if self.wrist not in (6, 13) or not 0 < self.impact_time < self.duration:
             raise ValueError("Invalid wrist or reference impact time")
-        held = np.delete(np.arange(14), self.wrist)
+        self.active_joints = (self.wrist,) if self.active_joints is None else tuple(self.active_joints)
+        arm = set(range(7)) if self.wrist == 6 else set(range(7, 14))
+        if not self.active_joints or self.wrist not in self.active_joints or not set(self.active_joints) <= arm:
+            raise ValueError("Strike reference active joints must belong to its stick arm")
+        held = np.array(sorted(set(range(14))-set(self.active_joints)), dtype=int)
         if not np.allclose(self.positions[:, held], self.positions[0, held], atol=1e-8):
-            raise ValueError("Strike reference must hold non-wrist joints")
+            raise ValueError("Strike reference must hold inactive joints")
         if self.velocities is None:
             self.velocities = np.zeros_like(self.positions)
         self.velocities = np.asarray(self.velocities, dtype=float)
@@ -46,12 +51,15 @@ class JointReference:
         return self.spline(value), self.spline(value, 1)
 
     def document(self):
-        return {"schema": "openarm.timed_strike.v1", "times_s": self.times.tolist(),
+        return {"schema": "openarm.timed_strike.v1" if len(self.active_joints) == 1 else "openarm.timed_strike.v2",
+                "active_joints": list(self.active_joints), "times_s": self.times.tolist(),
                 "positions_rad": self.positions.tolist(), "wrist": self.wrist, "impact_time_s": self.impact_time,
                 "contact_multiplier": self.contact_multiplier, "compliance_seconds": self.compliance_seconds,
                 "velocities_rad_s": self.velocities.tolist()}
 
     def motor_target(self, elapsed, measured, servo):
+        if len(self.active_joints) != 1:
+            raise ValueError("Full-arm strike references require encoder-only joint command execution")
         desired, _ = self.sample(elapsed)
         motor = servo.position_target(desired, measured)
         if self.times[3] <= elapsed < self.times[4] + self.compliance_seconds:
@@ -68,10 +76,11 @@ class JointReference:
 
     @classmethod
     def load(cls, document):
-        if document["schema"] != "openarm.timed_strike.v1":
+        if document["schema"] not in ("openarm.timed_strike.v1", "openarm.timed_strike.v2"):
             raise ValueError("Unknown timed reference schema")
         return cls(document["times_s"], document["positions_rad"], document["wrist"], document["impact_time_s"],
-                   document["contact_multiplier"], document["compliance_seconds"], document.get("velocities_rad_s"))
+                   document["contact_multiplier"], document["compliance_seconds"], document.get("velocities_rad_s"),
+                   tuple(document["active_joints"]) if "active_joints" in document else None)
 
     @classmethod
     def from_plan(cls, plan, cfg, wrist):
@@ -121,7 +130,8 @@ class SpeedConditionedReference:
             raise ValueError("Reference speeds must increase strictly")
         first = self.references[0]
         for reference in self.references:
-            if reference.wrist != first.wrist or not np.allclose(reference.positions[0], first.positions[0], atol=1e-8):
+            if (reference.wrist != first.wrist or reference.active_joints != first.active_joints
+                    or not np.allclose(reference.positions[0], first.positions[0], atol=1e-8)):
                 raise ValueError("Speed references must share the arm and ready pose")
 
     def at(self, speed):
@@ -133,7 +143,8 @@ class SpeedConditionedReference:
         blend = lambda a, b: (1 - weight) * a + weight * b
         return JointReference(blend(first.times, second.times), blend(first.positions, second.positions), first.wrist,
                               blend(first.impact_time, second.impact_time), blend(first.contact_multiplier, second.contact_multiplier),
-                              blend(first.compliance_seconds, second.compliance_seconds), blend(first.velocities, second.velocities))
+                              blend(first.compliance_seconds, second.compliance_seconds), blend(first.velocities, second.velocities),
+                              first.active_joints)
 
 
 class ResidualCommand:

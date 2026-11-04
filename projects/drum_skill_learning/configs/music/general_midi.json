@@ -1,0 +1,29 @@
+{
+  "schema": "openarm.percussion_arrangement.v1",
+  "channel": 9,
+  "foot_notes": [35, 36, 44],
+  "notes": {
+    "22": ["hi_hat", "cymbal_right", "cymbal_left"],
+    "26": ["hi_hat", "cymbal_right", "cymbal_left"],
+    "37": ["snare"],
+    "38": ["snare"],
+    "39": ["snare"],
+    "40": ["snare"],
+    "41": ["floor_tom", "rack_tom_right", "rack_tom_left"],
+    "42": ["hi_hat", "cymbal_right", "cymbal_left"],
+    "43": ["floor_tom", "rack_tom_right", "rack_tom_left"],
+    "45": ["rack_tom_right", "rack_tom_left", "floor_tom"],
+    "46": ["hi_hat", "cymbal_right", "cymbal_left"],
+    "47": ["rack_tom_right", "rack_tom_left", "floor_tom"],
+    "48": ["rack_tom_left", "rack_tom_right", "floor_tom"],
+    "49": ["cymbal_left", "cymbal_right"],
+    "50": ["rack_tom_left", "rack_tom_right", "floor_tom"],
+    "51": ["cymbal_right", "cymbal_left"],
+    "52": ["cymbal_right", "cymbal_left"],
+    "53": ["cymbal_right", "cymbal_left"],
+    "55": ["cymbal_left", "cymbal_right"],
+    "57": ["cymbal_right", "cymbal_left"],
+    "58": ["floor_tom", "rack_tom_right", "rack_tom_left"],
+    "59": ["cymbal_right", "cymbal_left"]
+  }
+}

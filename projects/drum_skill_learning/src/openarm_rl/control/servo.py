@@ -6,6 +6,15 @@ import numpy as np
 from openarm_drummer.model import JOINTS
 
 
+def extrapolate_encoders(positions, velocities, age, max_age=.03):
+    positions, velocities = np.asarray(positions), np.asarray(velocities)
+    if positions.shape != (14,) or velocities.shape != (14,) or not np.isfinite([positions, velocities]).all():
+        raise ValueError("Encoder prediction requires fourteen finite positions and velocities")
+    if not np.isfinite(age) or not 0 <= age <= max_age+1e-9:
+        raise RuntimeError("Encoder sample exceeds the prediction horizon")
+    return positions+velocities*age
+
+
 class EncoderGravity:
     def __init__(self, model, kp):
         self.model = copy(model)
