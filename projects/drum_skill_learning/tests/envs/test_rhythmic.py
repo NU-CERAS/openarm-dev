@@ -22,38 +22,6 @@ from openarm_rl.training.rhythmic import collect, initialize, save_bundle, train
 from openarm_rl.music.preflight import inspect_performance
 
 
-@pytest.fixture(scope="module")
-def rhythm_options(native_strike_fixture, tmp_path_factory):
-    output = tmp_path_factory.mktemp("rhythm")
-    profile = json.loads((native_strike_fixture / "snare.json").read_text())
-    profile["configuration"]["retract_seconds"] = .28
-    (output / "source.json").write_text(json.dumps(profile))
-    with CameraFreeStrikeEnv(native_strike_fixture / "scene", output / "source.json",
-                             position_range=0, domain_range=0) as env:
-        env.reset(seed=1)
-        while True:
-            _, _, done, truncated, info = env.step(env.reference_action())
-            if done or truncated:
-                break
-        assert info["hit_count"] == 1 and not info["unsafe_contact"]
-        assert info["hits"][0]["contact_duration_s"] <= .12
-        reference = env.reference.document()
-        reference["impact_time_s"] = info["hits"][0]["onset_time_s"]
-        profile = dict(env.profile)
-        profile["reference_bank"] = {"schema": "openarm.speed_conditioned_strike.v1",
-                                     "speeds_m_s": [.35, .85], "references": [reference, reference]}
-    (output / "snare.json").write_text(json.dumps(profile))
-    midi = mido.MidiFile()
-    track = mido.MidiTrack()
-    midi.tracks.append(track)
-    track.extend([mido.Message("note_on", channel=9, note=38, velocity=90),
-                  mido.Message("note_off", channel=9, note=38, velocity=0, time=1),
-                  mido.Message("note_on", channel=9, note=38, velocity=90, time=3839)])
-    midi.save(output / "score.mid")
-    return {"scene_directory": str(native_strike_fixture / "scene"), "profiles": str(output),
-            "midi_file": str(output / "score.mid")}
-
-
 def test_native_score_contacts_and_actor_excludes_privileged_measurements(rhythm_options):
     with RhythmicDrummingEnv(**rhythm_options) as env:
         before, _ = env.reset(seed=1)

@@ -9,7 +9,7 @@ import numpy as np
 from openarm_tools.recording.storage import lock
 from openarm_tools.ros_execution import trajectory_message
 
-from .rhythm_actor import RhythmActorRuntime
+from .rhythm_actor import ReferenceRuntime, RhythmActorRuntime
 from .ros_drum import JointMapping, RosDrumTool
 from ..skills.runtime import prepare_transfers
 
@@ -100,10 +100,11 @@ class RosMusicTool(RosDrumTool):
 
 def main():
     parser = argparse.ArgumentParser(description="Preview or explicitly execute a MIDI actor through the shared ROS interface")
-    parser.add_argument("--actor", type=Path, required=True)
-    parser.add_argument("--scene-directory", type=Path, required=True)
-    parser.add_argument("--profiles", type=Path, required=True)
-    parser.add_argument("--midi", type=Path, required=True)
+    parser.add_argument("--rehearsal", type=Path, help="Passed rehearsal report; plays its compiled reference with no learned policy")
+    parser.add_argument("--actor", type=Path)
+    parser.add_argument("--scene-directory", type=Path)
+    parser.add_argument("--profiles", type=Path)
+    parser.add_argument("--midi", type=Path)
     parser.add_argument("--mapping", type=Path, required=True)
     parser.add_argument("--percussion-mapping", type=Path)
     parser.add_argument("--tempo-scale", type=float, default=1.)
@@ -111,8 +112,15 @@ def main():
     parser.add_argument("--physical", action="store_true")
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args()
-    runtime = RhythmActorRuntime(args.actor, args.scene_directory, args.profiles, args.midi,
-                                 mapping=args.percussion_mapping, tempo_scale=args.tempo_scale)
+    if (args.rehearsal is None) == (args.actor is None):
+        raise ValueError("Choose exactly one of --rehearsal or --actor")
+    if args.physical and args.execute and args.rehearsal is None:
+        raise ValueError("Physical execution requires a passed --rehearsal; learned actors are not qualified for hardware")
+    if args.rehearsal:
+        runtime = ReferenceRuntime.from_rehearsal(args.rehearsal)
+    else:
+        runtime = RhythmActorRuntime(args.actor, args.scene_directory, args.profiles, args.midi,
+                                     mapping=args.percussion_mapping, tempo_scale=args.tempo_scale)
     tool = RosMusicTool(args.namespace, args.mapping, args.physical)
     try:
         print(json.dumps(tool.perform(runtime, args.execute)), flush=True)

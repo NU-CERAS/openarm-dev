@@ -453,6 +453,61 @@ Learning completion and contact F1 alone do not establish safe or improved
 performance. Report reference, ACT, initialized PPO and selected PPO separately,
 including unsafe-contact rates and unseen-pattern results.
 
+## Play a MIDI file on the robot
+
+Hardware plays the compiled reference, not a learned actor: every command is
+known before the robot moves, and `ros_music` refuses `--physical --execute`
+without a passed rehearsal. No part of this path has run on hardware yet, and
+the ROS entry point has only run against a fake client without `rclpy`.
+
+1. Qualify the song. This arranges the MIDI and plays it through the deployed
+   runtime in contact simulation, including the runtime's own stop checks:
+
+   ```bash
+   python -m openarm_rl.music.rehearse --midi /path/to/song.mid --arrange \
+     --scene-directory runs/rl/original-midi-preparation-20261103/scene \
+     --profiles runs/rl/tuned-references-20261104/profiles \
+     --output runs/rl/song
+   ```
+
+   `nominal` and `deployment` runs must all pass. The other conditions only
+   measure margins. The report is bound to the MIDI, mapping, tempo, model and
+   profiles, so any change needs a new rehearsal. Rehearse a slower first take
+   with `--tempo-scale .5`.
+2. Copy the arm gains into the hardware launch. The vendor defaults differ from
+   the model, and both the strokes and the gravity offset depend on these values.
+   Set the `kp1`-`kp7` and `kd1`-`kd7` hardware parameters to
+   `runtime_limits.position_gains` and `velocity_gains` from `rehearsal.json`.
+3. Copy `configs/deployment/drum_joint_mapping.example.json`. Fill the identity
+   hashes from `scene_identity` and the limits from `runtime_limits`, verify joint
+   signs and zeros, then verify the stream watchdog before setting the review flags.
+4. Place the kit. Measured on a 257-note rock song with a nominal robot:
+
+   | Kit error | Result |
+   |---|---|
+   | Horizontal, up to 20 mm | F1 at least .996 |
+   | Higher, 2 to 10 mm | F1 1.0, peak force up to 13.5 N |
+   | Lower, 5 mm | F1 .99, `cymbal_right` starts missing |
+   | Lower, 10 mm | F1 .075 |
+   | Lower, 20 mm | No hits |
+
+   Strokes are shallow, so set each drum 0 to 10 mm above its model height.
+   Heights above 10 mm were not measured.
+5. Preview, which sends no motion, and check the measured start:
+
+   ```bash
+   python -m openarm_rl.deployment.ros_music --rehearsal runs/rl/song/rehearsal.json \
+     --mapping /path/to/reviewed_mapping.json --physical
+   ```
+
+6. With the emergency stop in reach, add `--execute`. Score the take with
+   `feedback compare` above when an electronic kit records it.
+
+Some tuned strokes end at a joint limit: `lj7` for `cymbal_left` and `hi_hat`,
+`rj7` for `floor_tom`, and `rj4` for `cymbal_right`. A fast swing passes the limit
+by about .004 rad in simulation, so measured joints may exceed it by .01 rad
+while commands stay inside it. Confirm the real arm has that room first.
+
 ## ROS execution
 
 The `openarm_rl.deployment.rhythm_actor` runtime constructs its inputs from

@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 import torch
 
-from test_rhythmic import rhythm_options  # noqa: F401
 from openarm_rl.envs.rhythmic import RhythmicDrummingEnv
 
 
