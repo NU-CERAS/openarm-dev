@@ -18,6 +18,8 @@ from ..planning.strikes import scene_identity
 SETTLE_TAIL_S = .40
 # Cross-hand strokes can park an arm in the other arm's path, so they are used only when needed.
 CROSS_HAND_PENALTY_S = .25
+# Fast transfers lag their path by about .05 rad, which moves the stick tip about 12 mm off the checked path.
+MUSIC_TRANSFER_CLEARANCE_M = .025
 
 
 def profile_hashes(directory: Path) -> dict:
@@ -80,9 +82,10 @@ class TransferPlanner:
         key = arm, np.round(initial, 5).tobytes(), np.round(ready, 5).tobytes()
         if key not in self.cache:
             try:
-                path = plan_transfer(self.model, self.controller, initial, ready, arm=arm)
+                path = plan_transfer(self.model, self.controller, initial, ready, arm=arm, clearance=MUSIC_TRANSFER_CLEARANCE_M)
                 self.cache[key] = TransferTrajectory(path, np.full(14, self.velocity), np.full(14, self.acceleration),
-                                                     clearance_checker(self.model, self.controller, initial, ready, arm))
+                                                     clearance_checker(self.model, self.controller, initial, ready, arm,
+                                                                       MUSIC_TRANSFER_CLEARANCE_M))
             except ValueError as error:
                 self.cache[key] = error
         if isinstance(self.cache[key], ValueError):
