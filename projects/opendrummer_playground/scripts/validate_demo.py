@@ -2,10 +2,10 @@
 import json
 import time
 
-from live_demo import LiveDemo
-from model import OUTPUT
-from scene import build_scene
-from telemetry import ORDER
+from openarm_drummer.live_demo import LiveDemo
+from openarm_drummer.model import OUTPUT
+from openarm_drummer.scene import build_scene
+from openarm_drummer.telemetry import ORDER
 
 
 def validate():

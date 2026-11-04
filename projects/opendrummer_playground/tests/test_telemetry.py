@@ -1,15 +1,12 @@
 """Exercise telemetry against actual contact dynamics and display-only updates."""
-from pathlib import Path
-import sys
 import unittest
 
 import mujoco
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'scripts'))
-from scene import build_scene
-from strike import StrikeSession
-from telemetry import DrumTelemetry
+from openarm_drummer.scene import build_scene
+from openarm_drummer.strike import StrikeSession
+from openarm_drummer.telemetry import DrumTelemetry
 
 
 class TelemetryTests(unittest.TestCase):

@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 from contextlib import ExitStack
 import json
 from pathlib import Path
@@ -9,7 +10,9 @@ import time
 
 import numpy as np
 import rclpy
-from rclpy.executors import MultiThreadedExecutor
+from rclpy.executors import SingleThreadedExecutor
+from rclpy.parameter import Parameter
+from trajectory_msgs.msg import JointTrajectory as TrajectoryMessage
 
 from openarm_tools.recording.storage import lock
 from openarm_tools.robot.config import load, validate_positions
@@ -52,6 +55,18 @@ class RobotExecutionBackend:
         start_positions = {name: value.copy() for name, value in measured.positions.items()}
         start_positions[arm] = positions[0].copy()
         start = Feedback(start_positions, measured.velocities, measured.received_at)
+        if self.worker.backend == "demo" and self.worker.robot_model == "opendrummer":
+            import xml.etree.ElementTree as ET
+            from openarm_drummer.model import SOURCE
+
+            robot = ET.parse(SOURCE).getroot()
+            bounds = np.array([[float(robot.find(f"joint[@name='{arm[0]}j{i}']/limit").get(key))
+                                for key in ("lower", "upper")] for i in range(1, 8)])
+            sample_times = np.linspace(0, trajectory.duration, max(1000, len(times) * 10))
+            samples = trajectory.sample(sample_times)
+            if np.any(samples < bounds[:, 0]) or np.any(samples > bounds[:, 1]):
+                raise ValueError("Trajectory exceeds OpenDrummer joint limits")
+            return Preview(trajectory, None, start)
         cfg = load(robot="v1.0", arm=arm) if self.worker.backend == "demo" else hardware_configuration(self.worker.configuration)[arm][1]
         for position in positions:
             validate_positions(cfg, position.tolist())
@@ -64,7 +79,7 @@ class RobotExecutionBackend:
         return Preview(trajectory, None, start)
 
     def validate(self, arm, message):
-        if self.worker.state == "executing":
+        if self.worker.state in ("executing", "streaming"):
             raise ValueError("Another robot trajectory is executing")
         self.plan(arm, message)
 
@@ -89,6 +104,8 @@ class RobotExecutionBackend:
 def main():
     parser = argparse.ArgumentParser(description="Execute standard ROS 2 joint trajectory actions with MuJoCo or CAN")
     parser.add_argument("--backend", choices=["demo", "can"], default="demo")
+    parser.add_argument("--model", choices=["v1.0", "opendrummer"], default="v1.0")
+    parser.add_argument("--layout", type=Path)
     parser.add_argument("--hardware-config", type=Path)
     parser.add_argument("--supported", action="store_true")
     parser.add_argument("--show-plant", action="store_true")
@@ -96,12 +113,15 @@ def main():
     parser.add_argument("--namespace", default="")
     args, ros_args = parser.parse_known_args()
     if args.backend == "can":
+        if args.model != "v1.0":
+            raise ValueError("OpenDrummer needs a reviewed ROS hardware joint mapping")
         if not args.supported or args.hardware_config is None or args.show_plant:
             raise ValueError("CAN requires reviewed --hardware-config and --supported, without a plant window")
         hardware_configuration(args.hardware_config)
     with ExitStack() as resources:
         resources.enter_context(lock(f"ros-execution:{args.namespace}"))
-        worker = RobotWorker(args.backend, args.hardware_config, args.drum_asset)
+        worker = RobotWorker(args.backend, args.hardware_config, args.drum_asset, robot_model=args.model, layout_file=args.layout,
+                             isolate_physics=args.backend == "demo" and args.model == "opendrummer")
         resources.callback(worker.close)
         if not worker.ready.wait(10):
             raise TimeoutError("Robot execution backend did not become ready")
@@ -109,12 +129,33 @@ def main():
         rclpy.init(args=ros_args)
         resources.callback(rclpy.try_shutdown)
         node = RosExecutionServer(RobotExecutionBackend(worker), args.namespace)
+        node.declare_parameter("robot_model", args.model)
+        node.declare_parameter("layout_sha256", "")
+        def refresh_layout_identity():
+            signature = hashlib.sha256(args.layout.read_bytes()).hexdigest() if args.layout is not None and args.layout.is_file() else ""
+            if node.get_parameter("layout_sha256").value != signature:
+                node.set_parameters([Parameter("layout_sha256", Parameter.Type.STRING, signature)])
+        refresh_layout_identity()
+        node.layout_identity_timer = node.create_timer(.1, refresh_layout_identity)
+        if args.backend == "demo" and args.model == "opendrummer":
+            def stream(arm, message):
+                if message.joint_names != arm_joint_names(arm) or len(message.points) != 1:
+                    raise ValueError("Streaming requires one point with the selected arm's joint names")
+                point = message.points[0]
+                if point.accelerations or point.effort or message.header.stamp.sec or message.header.stamp.nanosec:
+                    raise ValueError("Streaming accepts relative position/velocity commands")
+                worker.servo(arm, point.positions, point.velocities)
+            node.servo_subscribers = [node.create_subscription(TrajectoryMessage, f"{arm}_joint_trajectory_controller/joint_trajectory",
+                                      lambda message, side=arm: stream(side, message), 1) for arm in ("left", "right")]
         resources.callback(node.destroy_node)
-        executor = MultiThreadedExecutor(num_threads=3)
+        executor = SingleThreadedExecutor()
         executor.add_node(node)
         resources.callback(executor.shutdown)
         if args.show_plant:
-            viewer = subprocess.Popen([sys.executable, "-m", "openarm_sim.console.ros_viewer", "--namespace", args.namespace])
+            command = [sys.executable, "-m", "openarm_sim.console.ros_viewer", "--namespace", args.namespace, "--model", args.model]
+            if args.layout:
+                command += ["--layout", str(args.layout)]
+            viewer = subprocess.Popen(command)
             resources.callback(stop_viewer, viewer)
         print(json.dumps({"ros_execution": "ready", "backend": args.backend, "namespace": args.namespace}), flush=True)
         try:

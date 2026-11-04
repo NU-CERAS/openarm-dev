@@ -6,9 +6,9 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
-from model import CONFIG, OUTPUT, SOURCE, HoldController
-from strike import HitDetector, STRIKE_CONFIG, smooth
-from transfers import TransferTrajectory, clearance_checker
+from openarm_drummer.model import CONFIG, OUTPUT, SOURCE, HoldController
+from openarm_drummer.strike import HitDetector, STRIKE_CONFIG, smooth
+from openarm_drummer.transfers import TransferTrajectory, clearance_checker
 
 PRESETS = CONFIG.with_name('taught_poses.json')
 DRUM_ARMS = {'snare':'left', 'rack_tom_left':'left', 'hi_hat':'left',

@@ -5,7 +5,7 @@ import json
 
 import mujoco
 import numpy as np
-from model import CONFIG
+from openarm_drummer.model import CONFIG
 
 
 class TransferTrajectory:

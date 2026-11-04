@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 import mujoco
 import numpy as np
 
-from model import ASSET, JOINTS, OUTPUT, SOURCE, HoldController, build, forward_urdf, origin, vector
+from openarm_drummer.model import ASSET, JOINTS, OUTPUT, SOURCE, HoldController, build, forward_urdf, origin, vector
 
 
 def check_official_inertials(model, controller):

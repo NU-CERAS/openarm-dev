@@ -9,7 +9,7 @@ from curobo.motion_planner import MotionPlanner, MotionPlannerCfg
 from curobo.scene import Scene
 from curobo.types import GoalToolPose, JointState
 
-from ..execution import JointTrajectory, joint_names
+from ..execution import JointTrajectory
 from ..paths import RUNS
 from . import PlanningResult
 
@@ -36,6 +36,11 @@ class CuroboPlanner:
                 dimensions = model.geom_size[index] * 2
             elif kind == mujoco.mjtGeom.mjGEOM_CYLINDER:
                 dimensions = np.array([2 * model.geom_size[index, 0]] * 2 + [2 * model.geom_size[index, 1]])
+            elif kind == mujoco.mjtGeom.mjGEOM_SPHERE:
+                dimensions = np.repeat(2 * model.geom_size[index, 0], 3)
+            elif kind == mujoco.mjtGeom.mjGEOM_CAPSULE:
+                radius, half_length = model.geom_size[index, :2]
+                dimensions = np.array([2 * radius, 2 * radius, 2 * (half_length + radius)])
             else:
                 raise ValueError(f"Unsupported world obstacle: {model.geom(index).name}")
             quaternion = np.empty(4)
@@ -47,8 +52,8 @@ class CuroboPlanner:
         return {"cuboid": cuboids}
 
     def _planner(self, arm: str):
-        selected = set(joint_names(arm))
         model, data = self.sim.model, self.sim.data
+        selected = {model.joint(index).name for index in self.sim.joint_ids[arm]}
         locks = {
             model.joint(index).name: float(data.qpos[model.jnt_qposadr[index]])
             for index in range(model.njnt)
@@ -58,7 +63,7 @@ class CuroboPlanner:
         if arm not in self.instances or self.instances[arm][0] != signature:
             config = deepcopy(self.config)
             kinematics = config.get("robot_cfg", config)["kinematics"]
-            kinematics["tool_frames"] = [f"openarm_{arm}_hand_tcp"]
+            kinematics["tool_frames"] = [f"{arm}_planning_tcp" if self.sim.robot_model == "opendrummer" else f"openarm_{arm}_hand_tcp"]
             kinematics["lock_joints"] = locks
             kinematics["cspace"]["default_joint_position"] = [
                 float(data.qpos[model.jnt_qposadr[model.joint(name).id]])
@@ -79,7 +84,7 @@ class CuroboPlanner:
         return planner
 
     def plan(self, arm: str, target, orientation=None) -> PlanningResult:
-        if self.sim.model.nq != 18:
+        if np.any(self.sim.model.jnt_type == mujoco.mjtJoint.mjJNT_FREE):
             raise ValueError("Free-object transport needs an explicit attached-object collision model")
         if orientation is None:
             goal_q = self.sim._solve(arm, target)
@@ -104,7 +109,7 @@ class CuroboPlanner:
         if result is None or not bool(result.success.all().item()):
             return PlanningResult(None, f"cuRobo found no collision-free trajectory for {arm} arm at {np.round(target, 4).tolist()} m")
         interpolated = result.get_interpolated_plan()
-        indices = [interpolated.joint_names.index(name) for name in joint_names(arm)]
+        indices = [interpolated.joint_names.index(self.sim.model.joint(index).name) for index in self.sim.joint_ids[arm]]
         width = len(interpolated.joint_names)
         positions = interpolated.position.reshape(-1, width).detach().cpu().numpy()[:, indices]
         velocities = interpolated.velocity.reshape(-1, width).detach().cpu().numpy()[:, indices]

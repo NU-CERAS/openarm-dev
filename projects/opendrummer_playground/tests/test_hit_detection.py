@@ -1,10 +1,7 @@
 """Hit-event semantics independent of the robot dynamics test."""
-from pathlib import Path
-import sys
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'scripts'))
-from strike import HitDetector
+from openarm_drummer.strike import HitDetector
 
 
 class HitDetectionTests(unittest.TestCase):

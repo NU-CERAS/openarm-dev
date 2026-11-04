@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openarm-drummer"
+version = "0.1.0"
+description = "Shared OpenDrummer scene, model import and physical reference controllers"
+requires-python = ">=3.12"
+dependencies = ["mujoco==3.17.0", "numpy>=1.26,<3", "pillow>=11,<13"]
+
+[tool.setuptools]
+packages = ["openarm_drummer"]
+package-dir = {openarm_drummer = "scripts"}

@@ -12,10 +12,10 @@ import glfw
 import numpy as np
 from PIL import Image, ImageDraw
 
-from model import CONFIG, OUTPUT, HoldController
-from taught import PoseStore, TaughtStrike, DRUM_ARMS
-from telemetry import DrumTelemetry, LABELS, ORDER, font
-from transfers import plan_transfer
+from openarm_drummer.model import CONFIG, OUTPUT, HoldController
+from openarm_drummer.taught import PoseStore, TaughtStrike, DRUM_ARMS
+from openarm_drummer.telemetry import DrumTelemetry, LABELS, ORDER, font
+from openarm_drummer.transfers import plan_transfer
 
 DEMO_POSES = CONFIG.with_name('demo_poses.json')
 

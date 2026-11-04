@@ -42,6 +42,7 @@ class ReachStatus:
 
 
 class ReachSimulation:
+    robot_model = "v1.0"
     table_height = 0.30
     control_period = 0.01
 
@@ -200,11 +201,12 @@ class ReachSimulation:
 
     def _solve(self, arm: str, target: NDArray[np.float64], orientation: NDArray[np.float64] | None = None) -> NDArray[np.float64] | None:
         configuration = mink.Configuration(self.model, q=self.data.qpos)
+        frame = self.model.site(self.site_ids[arm]).name
         task = mink.FrameTask(
-            frame_name=f"{arm}_tcp", frame_type="site", position_cost=1.0,
+            frame_name=frame, frame_type="site", position_cost=1.0,
             orientation_cost=0.0 if orientation is None else 1.0, lm_damping=1e-3,
         )
-        transform = configuration.get_transform_frame_to_world(f"{arm}_tcp", "site")
+        transform = configuration.get_transform_frame_to_world(frame, "site")
         rotation = transform.rotation() if orientation is None else mink.SO3.from_matrix(orientation)
         task.set_target(mink.SE3.from_rotation_and_translation(rotation, target))
         posture = mink.PostureTask(self.model, cost=1e-4)
@@ -241,7 +243,8 @@ class ReachSimulation:
         if self.status.state == "running":
             return ReachAcceptance(False, "Motion is running; wait for completion or cancel it")
         minimum_x = -0.10 if self.tabletop_mount else 0.14
-        if not (minimum_x <= target[0] <= 0.70 and abs(target[1]) <= 0.52 and self.table_height + 0.04 <= target[2] <= 0.85):
+        lower, upper = getattr(self, "workspace", ([minimum_x, -.52, self.table_height + .04], [.70, .52, .85]))
+        if np.any(target < lower) or np.any(target > upper):
             return ReachAcceptance(False, "Target is outside the demo workspace")
         if (arm == "right" and target[1] > -0.025) or (arm == "left" and target[1] < 0.025):
             return ReachAcceptance(False, "Select a target on the chosen arm's side")
@@ -303,11 +306,16 @@ class ReachSimulation:
             self._desired = self._start_q + blend * (self._goal_q - self._start_q)
             if self.trajectory is not None:
                 self._desired[self.actuator_ids[self.status.arm]] = self.trajectory.sample(self.data.time - self._motion_start)
-        # 通过 servo 目标位置加入重力前馈，并保留力矩限制。
-        command = self._desired + self.data.qfrc_bias[self.actuated_dofs] / self.kp
-        self.data.ctrl[:] = np.clip(command, self.model.actuator_ctrlrange[:, 0], self.model.actuator_ctrlrange[:, 1])
+        self._apply_control()
         mujoco.mj_step(self.model, self.data)
         mujoco.mj_forward(self.model, self.data)
+        self._check_motion()
+
+    def _apply_control(self):
+        command = self._desired + self.data.qfrc_bias[self.actuated_dofs] / self.kp
+        self.data.ctrl[:] = np.clip(command, self.model.actuator_ctrlrange[:, 0], self.model.actuator_ctrlrange[:, 1])
+
+    def _check_motion(self):
         if self.data.warning.number.any() or not np.isfinite(self.data.qpos).all():
             raise RuntimeError("Invalid MuJoCo physics state")
         if self.status.state != "running":
@@ -336,3 +344,15 @@ class ReachSimulation:
 
     def __exit__(self, exc_type, exc, traceback):
         self.close()
+
+
+def reach_simulation(robot_model="v1.0", layout_file=None, **options):
+    if robot_model == "opendrummer":
+        from .opendrummer import OpenDrummerReachSimulation
+
+        return OpenDrummerReachSimulation(layout_file=layout_file, **options)
+    if robot_model != "v1.0":
+        raise ValueError("Unknown robot model")
+    if layout_file is not None:
+        raise ValueError("Drum layout requires OpenDrummer")
+    return ReachSimulation(**options)

@@ -4,8 +4,8 @@ import json
 import mujoco
 import numpy as np
 
-from model import OUTPUT, HoldController
-from scene import build_scene, solve_approach
+from openarm_drummer.model import OUTPUT, HoldController
+from openarm_drummer.scene import build_scene, solve_approach
 
 
 def segment_hits_triangles(start, end, triangles):

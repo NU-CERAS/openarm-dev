@@ -72,7 +72,13 @@ hardware adapter. It does not establish physical robot performance.
    at its planned pose.
    Arrow tips and shafts are
    draggable. Choose **Overview** if an axis points toward the viewing direction.
-   Changing the view or resizing cancels an active drag.
+   Changing a view preset or resizing cancels an active TCP drag.
+   Drag the background with the left mouse button to rotate the view. Right drag
+   pans the camera; middle drag or the wheel zooms. Hold Shift while rotating or
+   panning for MuJoCo's horizontal movement mode. Shift-left drag also rotates
+   when starting on a TCP arrow. View controls preserve the pending robot target
+   and remain available while a robot action executes. **Overview** and
+   **Head view** restore their respective camera presets.
 3. After release, the preview displays the collision-checked trajectory's final
    pose. The orange marker identifies the target. An unreachable or opposite-side target displays
    guidance and disables execution.
@@ -204,7 +210,7 @@ Startup applies this reviewed mapping. Encoder readings alone do not determine
 a mechanical zero or an external object's location. The existing `openarm zero`
 command records a separate operator-relative software reference.
 
-See [policy deployment](policy-deployment.md) for continuous RL/ACT command
+See [policy deployment](../../drum_skill_learning/docs/policy-deployment.md) for continuous RL/ACT command
 execution and calibrated gripper control through the same CAN backend.
 
 Once those machine-specific settings are complete, this command starts the

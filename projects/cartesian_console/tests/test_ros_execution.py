@@ -56,6 +56,43 @@ def completed(session, plan):
     return session.sync()
 
 
+def test_opendrummer_ros_tip_reaches_continue_from_feedback(tmp_path):
+    namespace = f"/drummer_test_{uuid.uuid4().hex[:10]}"
+    session = None
+    worker = None
+    with (tmp_path / "backend.log").open("w") as log:
+        process = subprocess.Popen([sys.executable, "-u", "-m", "openarm_sim.console.ros_backend",
+                                    "--model", "opendrummer", "--namespace", namespace],
+                                   stdout=log, stderr=subprocess.STDOUT)
+        try:
+            worker = RobotWorker("ros", ros_namespace=namespace, robot_model="opendrummer")
+            assert worker.ready.wait(15)
+            worker.read()
+            session = SyncSession(worker, "ompl", robot_model="opendrummer")
+            for _ in range(2):
+                measured = session.sync()
+                target = session.twin.tcp_position("right") + [0, 0, .01]
+                plan = session.prepare("right", target)
+                assert plan is not None, session.rejection_reason
+                np.testing.assert_allclose(plan.trajectory.positions[0], measured.positions["right"], atol=.002)
+                session.execute()
+                completed(session, plan)
+                session.sync()
+                assert np.linalg.norm(session.preview.tcp_position("right") - target) < .01
+            session.save(tmp_path / "targets.json", "tip")
+            arm, saved = session.load(tmp_path / "targets.json", "tip")
+            assert arm == "right"
+            np.testing.assert_allclose(saved, target)
+        finally:
+            if session is not None:
+                session.close()
+            elif worker is not None:
+                worker.close()
+            if process.poll() is None:
+                process.send_signal(signal.SIGINT)
+            assert process.wait(timeout=10) == 0, (tmp_path / "backend.log").read_text()
+
+
 def test_ros_preview_execution_and_consecutive_measured_starts(ros_session):
     session = ros_session
     for target in ([40, -25, -30], [42, -25, -28]):

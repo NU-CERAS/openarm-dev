@@ -26,6 +26,7 @@ macos = "15.0"
 mujoco = ">=3.3,<4"
 
 [feature.console.pypi-dependencies]
+openarm-drummer = {path = "../../projects/opendrummer_playground", editable = true}
 openarm-sim = {path = "../../projects/cartesian_console", editable = true, extras = ["dev", "video"]}
 
 [environments]

@@ -17,6 +17,7 @@ from ..execution import joint_names
 from ..paths import RUNS
 from .session import RobotWorker, SyncSession
 from .gizmo import AxisDrag, hit_axis
+from .camera_controls import CameraControls
 
 
 class SyncConsole:
@@ -24,7 +25,8 @@ class SyncConsole:
         self.session, self.targets = session, targets
         initial_feedback = self.session.sync()
         self.root = tk.Tk()
-        self.root.title("OpenArm | Control console")
+        self.robot_label = "OpenDrummer" if session.twin.robot_model == "opendrummer" else "OpenArm"
+        self.root.title(f"{self.robot_label} | Control console")
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.root.report_callback_exception = self.callback_error
         self.width = width or min(1280, max(640, self.root.winfo_screenwidth() - 390))
@@ -41,6 +43,9 @@ class SyncConsole:
         self.tick_callback = None
         self.updating_coordinates = False
         self.drag = None
+        self.camera_drag = None
+        self.annotation = None
+        self.layout_path = RUNS / "annotations/drum_layout.json"
         self.drag_target = None
         self.drag_changed = False
         self.gizmo_handles = {}
@@ -52,6 +57,8 @@ class SyncConsole:
             "schema": "openarm.console_startup.v1", "backend": session.worker.backend,
             "ros_namespace": getattr(session.worker, "ros_namespace", ""),
             "physical": getattr(session.worker, "physical", False),
+            "robot_model": session.twin.robot_model,
+            "tcp_sites": {arm: session.twin.model.site(session.twin.site_ids[arm]).name for arm in ("left", "right")},
             "reference_site": session.reference.site,
             "joint_positions_rad": {arm: values.tolist() for arm, values in initial_feedback.positions.items()},
             "tcp_relative_cm": {arm: session.reference.from_world(session.twin.tcp_position(arm)).tolist()
@@ -82,7 +89,7 @@ class SyncConsole:
         self.name.trace_add("write", self.update_load_button)
         self.refresh_names()
         self.canvas.bind("<Configure>", self.schedule_resize)
-        self.root.bind("<Escape>", lambda event: self.cancel_drag())
+        self.root.bind("<Escape>", lambda event: (self.cancel_drag(), self.camera_up()))
         self.tick()
 
     def _style(self):
@@ -102,7 +109,7 @@ class SyncConsole:
     def _layout(self):
         header = ttk.Frame(self.root, padding=(18, 12))
         header.pack(fill="x")
-        ttk.Label(header, text="OpenArm", style="Title.TLabel").pack(side="left")
+        ttk.Label(header, text=self.robot_label, style="Title.TLabel").pack(side="left")
         ttk.Label(header, text="Control console", padding=(16, 0)).pack(side="left")
         physical = getattr(self.session.worker, "physical", False)
         badge = "PHYSICAL ROBOT | ROS 2" if physical else ("ROS 2 ROBOT" if self.session.worker.backend == "ros" else "SIMULATION DEMO")
@@ -115,6 +122,9 @@ class SyncConsole:
         self.edit_controls = []
         ttk.Label(side, text="Drag TCP to preview", style="Step.TLabel").pack(anchor="w", pady=(0, 8))
         ttk.Label(side, text="Origin: torso top center", style="Muted.TLabel").pack(anchor="w", pady=(0, 6))
+        if self.session.twin.robot_model == "opendrummer":
+            ttk.Label(side, text="TCP: drumstick striking tip", style="Muted.TLabel").pack(anchor="w", pady=(0, 6))
+            ttk.Button(side, text="Annotate drum layout", command=self.open_annotation).pack(fill="x", pady=4)
         arms = ttk.Frame(side)
         arms.pack(fill="x")
         for arm, label in (("right", "Right arm"), ("left", "Left arm")):
@@ -161,6 +171,15 @@ class SyncConsole:
         self.canvas.bind("<B1-Motion>", self.pointer_move)
         self.canvas.bind("<ButtonRelease-1>", self.pointer_up)
         self.canvas.bind("<Motion>", self.pointer_hover)
+        for button in (2, 3):
+            self.canvas.bind(f"<ButtonPress-{button}>", self.camera_down)
+            self.canvas.bind(f"<B{button}-Motion>", self.camera_move)
+            self.canvas.bind(f"<ButtonRelease-{button}>", self.camera_up)
+        self.canvas.bind("<MouseWheel>", self.camera_scroll)
+        self.canvas.bind("<Button-4>", self.camera_scroll)
+        self.canvas.bind("<Button-5>", self.camera_scroll)
+        ttk.Label(scene, text="View: drag background to rotate | Right drag: pan | Middle drag / wheel: zoom | Shift: horizontal motion",
+                  style="Muted.TLabel", wraplength=self.width - 20).pack(fill="x", pady=(5, 0))
         ttk.Label(scene, textvariable=self.message, style="Status.TLabel", wraplength=self.width - 20).pack(fill="x", pady=(8, 0))
         footer = ttk.Frame(self.root, padding=(18, 4, 18, 10))
         footer.pack(fill="x")
@@ -171,6 +190,14 @@ class SyncConsole:
     def action(self, event, **details):
         self.feedback_log.write(json.dumps({"event": event, "timestamp_unix": time.time(), **details}) + "\n")
         self.feedback_log.flush()
+
+    def open_annotation(self):
+        if self.annotation is None:
+            from .annotation_panel import AnnotationPanel
+
+            self.annotation = AnnotationPanel(self, self.layout_path)
+        else:
+            self.annotation.window.lift()
 
     def invalidate(self, *_):
         if self.updating_coordinates:
@@ -271,6 +298,7 @@ class SyncConsole:
 
     def view(self, overview):
         self.cancel_drag()
+        self.camera_up()
         for index, sim in enumerate((self.session.preview,)):
             look_height = 0.25 if sim.tabletop_mount else 0.48
             values = (np.array([1.55, 1.15, 1.25]), np.array([0.25, 0, look_height]), 48) if overview else self.camera_defaults[index]
@@ -288,6 +316,7 @@ class SyncConsole:
         if self.closed or (width, height) == (self.width, self.height):
             return
         self.cancel_drag()
+        self.camera_up()
         for camera in self.cameras:
             camera.close()
         for sim in (self.session.preview,):
@@ -299,20 +328,19 @@ class SyncConsole:
         self.frame = None
 
     def pointer_hover(self, event):
-        if self.drag is None:
+        if self.drag is None and self.camera_drag is None:
             selected = hit_axis((event.x, event.y), self.gizmo_handles)
             self.canvas.configure(cursor="hand2" if selected is not None else "crosshair")
 
     def pointer_down(self, event):
-        if self.session.worker.state == "executing" or self.frame is None:
-            self.message.set("Wait for the current move, or choose Stop.")
+        if self.frame is None:
             return
         axis = hit_axis((event.x, event.y), self.gizmo_handles)
-        if axis is None:
-            if self.gizmo_origin is not None and np.linalg.norm(np.array([event.x, event.y]) - self.gizmo_origin) < 13:
-                self.message.set("Drag one of the colored X, Y or Z arrows.")
-                return
-            self.message.set("Drag one of the colored X, Y or Z arrows.")
+        if axis is None or event.state & 1:
+            self.camera_down(event)
+            return
+        if self.session.worker.state == "executing":
+            self.message.set("Wait for the current move, or choose Stop.")
             return
         self.canvas.focus_set()
         camera = self.cameras[self.frame_index]
@@ -334,6 +362,9 @@ class SyncConsole:
         self.action("drag_started", axis="XYZ"[axis], origin_cm=self.session.reference.from_world(drag.origin).tolist())
 
     def pointer_move(self, event):
+        if self.camera_drag is not None:
+            self.camera_move(event)
+            return
         if self.drag is None:
             return
         if not 0 <= event.x < self.width or not 0 <= event.y < self.height:
@@ -350,6 +381,9 @@ class SyncConsole:
             variable.set(f"{value:.2f}")
 
     def pointer_up(self, event):
+        if self.camera_drag is not None:
+            self.camera_up(event)
+            return
         if self.drag is None:
             return
         self.pointer_move(event)
@@ -359,11 +393,51 @@ class SyncConsole:
         self.drag_target = None
         self.canvas.configure(cursor="crosshair")
         if changed:
+            if self.annotation is not None and self.annotation.drag_enabled.get():
+                self.annotation.drag_to(self.session.reference.to_world([float(v.get()) for v in self.coordinates]))
+                return
             self.action("drag_finished", axis="XYZ"[axis], target_relative_cm=[float(v.get()) for v in self.coordinates])
             self.plan()
         else:
             self.update_execute_button()
             self.message.set("Drag an axis arrow to change the TCP target.")
+
+    def camera_down(self, event):
+        if self.drag is not None or self.camera_drag is not None:
+            return "break"
+        button = event.num
+        if button not in (1, 2, 3):
+            return "break"
+        horizontal = bool(event.state & 1)
+        action = (mujoco.mjtMouse.mjMOUSE_ZOOM if button == 2 else
+                  mujoco.mjtMouse.mjMOUSE_MOVE_H if button == 3 and horizontal else
+                  mujoco.mjtMouse.mjMOUSE_MOVE_V if button == 3 else
+                  mujoco.mjtMouse.mjMOUSE_ROTATE_H if horizontal else mujoco.mjtMouse.mjMOUSE_ROTATE_V)
+        self.camera_drag = (CameraControls(self.session.preview), action, event.x, event.y)
+        self.canvas.focus_set()
+        self.canvas.configure(cursor="fleur")
+        return "break"
+
+    def camera_move(self, event):
+        if self.camera_drag is None:
+            return "break"
+        controls, action, x, y = self.camera_drag
+        controls.move(action, (event.x-x)/self.height, (event.y-y)/self.height)
+        self.camera_drag = (controls, action, event.x, event.y)
+        return "break"
+
+    def camera_up(self, event=None):
+        self.camera_drag = None
+        self.canvas.configure(cursor="crosshair")
+        return "break"
+
+    def camera_scroll(self, event):
+        if self.drag is not None or self.camera_drag is not None:
+            return "break"
+        amount = 1 if event.num == 4 else -1 if event.num == 5 else event.delta/120
+        if amount:
+            CameraControls(self.session.preview).move(mujoco.mjtMouse.mjMOUSE_ZOOM, 0., .05*amount)
+        return "break"
 
     def cancel_drag(self):
         if self.drag is None:
@@ -439,7 +513,8 @@ class SyncConsole:
         if self.drag is not None:
             anchor = self.drag_target
         else:
-            anchor = sim.tcp_position(self.arm.get())
+            anchor = (self.annotation.layout.center(self.annotation.target.get())
+                      if self.annotation is not None and self.annotation.drag_enabled.get() else sim.tcp_position(self.arm.get()))
         origin = self.visible_pixel(camera, anchor)
         if origin is None:
             return
@@ -459,7 +534,9 @@ class SyncConsole:
             self.canvas.create_text(end[0], end[1] - 15, text=axis, fill=color,
                                     font=("DejaVu Sans", 13, "bold"), tags="gizmo")
         if self.session.plan is None:
-            self.canvas.create_text(origin[0] + 14, origin[1] + 18, anchor="nw", text="Drag TCP axes",
+            label = (f"Drag {self.annotation.target.get()} center" if self.annotation is not None and self.annotation.drag_enabled.get()
+                     else "Drag TCP axes")
+            self.canvas.create_text(origin[0] + 14, origin[1] + 18, anchor="nw", text=label,
                                     fill="white", font=("DejaVu Sans", 11, "bold"), tags="gizmo")
 
     def _overlay(self, camera, sim):
@@ -580,9 +657,12 @@ def main():
     parser.add_argument("--namespace", default="", help="Namespace of the ROS trajectory actions and joint_states")
     parser.add_argument("--physical", action="store_true", help="Identify the connected ROS execution backend as physical hardware")
     parser.add_argument("--planner", choices=["ompl", "mink", "curobo"], default="ompl")
+    parser.add_argument("--model", choices=["v1.0", "opendrummer"], default="v1.0")
+    parser.add_argument("--layout", type=Path)
     parser.add_argument("--drum-asset", type=Path)
     parser.add_argument("--targets", type=Path, default=RUNS / "sync/targets.json")
-    parser.add_argument("--speed", type=float, default=0.2)
+    parser.add_argument("--speed", type=float, default=0.5)
+    parser.add_argument("--acceleration", type=float, default=1.2)
     parser.add_argument("--record", type=Path, help="Record an independent MuJoCo demo without opening Tk")
     parser.add_argument("--smoke-test", action="store_true", help="Exercise TCP preview, explicit execution and feedback synchronization")
     args = parser.parse_args()
@@ -591,17 +671,20 @@ def main():
     if args.record:
         from .video import record
 
-        record(args.record, args.planner, args.drum_asset)
+        record(args.record, args.planner, args.drum_asset, args.model)
         return
-    worker = RobotWorker("ros", ros_namespace=args.namespace)
+    worker = RobotWorker("ros", ros_namespace=args.namespace, robot_model=args.model)
     worker.physical = args.physical
     session = None
     try:
         if not worker.ready.wait(10):
             raise TimeoutError("Robot connection did not become ready")
         worker.read()
-        session = SyncSession(worker, args.planner, args.drum_asset, args.speed)
+        session = SyncSession(worker, args.planner, args.drum_asset, args.speed, args.acceleration,
+                              robot_model=args.model, layout_file=args.layout)
         console = SyncConsole(session, args.targets)
+        if args.layout is not None:
+            console.layout_path = args.layout
         print(json.dumps({"sync_console": "ready", "backend": "ros2", "planner": args.planner,
                           "namespace": args.namespace, "physical": args.physical,
                           "render_resolution": [console.width, console.height], "session": str(console.session_directory)}), flush=True)
@@ -639,7 +722,9 @@ def main():
                 console.canvas.event_generate("<ButtonPress-1>", x=int(tip[0]), y=int(tip[1]))
                 if console.drag is None or console.drag.index != 2:
                     raise RuntimeError("GUI smoke test did not select the TCP Z handle")
-                pixel = console.drag.camera.project(console.drag.origin + console.drag.axis * 0.16, console.drag.frame)
+                displacement = .02 if args.model == "opendrummer" else .06
+                parameter = console.drag.start_parameter + displacement
+                pixel = console.drag.camera.project(console.drag.origin + console.drag.axis * parameter, console.drag.frame)
                 console.canvas.event_generate("<B1-Motion>", x=pixel[0], y=pixel[1])
                 console.canvas.event_generate("<ButtonRelease-1>", x=pixel[0], y=pixel[1])
                 if session.plan is None or worker.state != "connected":

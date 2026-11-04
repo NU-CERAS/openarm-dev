@@ -11,22 +11,24 @@ from ..compute_guard import check_resources
 from .session import RobotWorker, SyncSession
 
 
-def record(output: Path, planner: str, scene: Path | None):
+def record(output: Path, planner: str, scene: Path | None, robot_model="v1.0"):
     output.mkdir(parents=True, exist_ok=True)
-    worker = RobotWorker(scene=scene)
+    worker = RobotWorker(scene=scene, robot_model=robot_model)
     session = None
     cameras = []
     try:
         if not worker.ready.wait(10):
             raise TimeoutError("Demo plant did not become ready")
         worker.read()
-        session = SyncSession(worker, planner, scene)
+        session = SyncSession(worker, planner, scene, robot_model=robot_model)
         for sim in (session.twin, session.preview):
             sim.set_camera(np.array([1.55, 1.15, 1.25]), np.array([0.25, 0, 0.25 if sim.tabletop_mount else 0.48]), 48)
             cameras.append(OverheadCamera(sim.model, 640, 360, sim.table_height))
         initial = session.sync().positions["right"].copy()
         target = np.array([0.43, -0.24, 0.44])
-        if scene is not None:
+        if robot_model == "opendrummer":
+            target = session.twin.tcp_position("right") + [0, 0, .02]
+        elif scene is not None:
             target = np.array([0.43, -0.34, 0.56])
         plan = session.prepare("right", target)
         if plan is None:

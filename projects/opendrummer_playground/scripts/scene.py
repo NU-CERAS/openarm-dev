@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 import mujoco
 import numpy as np
 
-from model import ROOT, OUTPUT, CONFIG, HoldController, build
+from openarm_drummer.model import ROOT, OUTPUT, CONFIG, HoldController, build
 
 SCENE_CONFIG = CONFIG.with_name('scene.json')
 DRUMS = ROOT / 'robots/drums'
@@ -89,9 +89,9 @@ def add_axes(parent, origin, length=0.12, prefix='world'):
                       fromto=' '.join(map(str, [*origin, *end])), size='.002', rgba=color, group='3')
 
 
-def build_scene(collisions=True):
+def build_scene(collisions=True, configuration=None):
     _, robot_report = build()
-    cfg = json.loads(SCENE_CONFIG.read_text())
+    cfg = json.loads(SCENE_CONFIG.read_text()) if configuration is None else dict(configuration)
     elevation = float(cfg['robot_elevation_m'])
     support_xy = np.asarray(cfg['support_size_xy_m'], dtype=float)
     if not np.isfinite(elevation) or elevation <= 0:
@@ -205,10 +205,10 @@ def build_scene(collisions=True):
               'support_size_m': [*support_xy.tolist(), elevation],
               'kit_bounds_m': [transformed[used].min(0).tolist(), transformed[used].max(0).tolist()],
               'source_obj_sha256': hashlib.sha256((DRUMS/'drums.obj').read_bytes()).hexdigest(),
-              'scene_config_sha256': hashlib.sha256(SCENE_CONFIG.read_bytes()).hexdigest(),
+              'scene_config_sha256': hashlib.sha256(SCENE_CONFIG.read_bytes() if configuration is None else json.dumps(cfg, sort_keys=True).encode()).hexdigest(),
               'platform_removed_triangles': len(platform_faces), 'collision_enabled': False}
     if collisions:
-        from collisions import add_collisions
+        from openarm_drummer.collisions import add_collisions
         model, contact_report = add_collisions(model, report, vertices, materials, components)
         report['collision_enabled'] = True
         report['collision_geom_count'] = contact_report['collision_geom_count']
@@ -217,7 +217,7 @@ def build_scene(collisions=True):
 
 
 def solve_approach(model, robot_report, scene_report, side, target_name, height=None, seed=None, wrist_angle=None, joint_margin=.001,
-                   tip_direction=None, attempts=16, iterations=250):
+                   tip_direction=None, attempts=16, iterations=250, pose_validator=None):
     """Joint-limited static IK only; does not plan or certify a clear path."""
     target = next(s for s in scene_report['surfaces'] if s['name'] == target_name)
     if target['kind'] == 'kick':
@@ -239,11 +239,14 @@ def solve_approach(model, robot_report, scene_report, side, target_name, height=
     sid = model.site(f'{side}_stick_tip').id
     rng = np.random.default_rng(9)
     best = None
+    accepted = False
     for attempt in range(attempts):
         data = mujoco.MjData(model)
         controller.reset(data)
         if attempt == 0 and seed is not None:
             data.qpos[controller.q] = seed
+            data.qpos[qids] = np.clip(data.qpos[qids], controller.bounds[selected, 0] + joint_margin,
+                                     controller.bounds[selected, 1] - joint_margin)
         elif attempt:
             data.qpos[qids] = rng.uniform(controller.bounds[selected, 0], controller.bounds[selected, 1])
         if wrist_angle is not None:
@@ -256,7 +259,10 @@ def solve_approach(model, robot_report, scene_report, side, target_name, height=
             if best is None or score < best[0]:
                 best = (score, data.qpos[controller.q].copy(), float(np.linalg.norm(error[:3])),
                         float(np.degrees(np.arccos(np.clip(z@direction, -1, 1)))))
-            if best[2] < .0001 and best[3] < .1:
+            converged = best[2] < .0001 and best[3] < .1
+            if pose_validator is not None:
+                converged = np.linalg.norm(error[:3]) < .0001 and np.linalg.norm(direction-z) < .002
+            if converged:
                 break
             jp, jr = np.zeros((3, model.nv)), np.zeros((3, model.nv))
             mujoco.mj_jacSite(model, data, jp, jr, sid)
@@ -265,12 +271,20 @@ def solve_approach(model, robot_report, scene_report, side, target_name, height=
             delta = jacobian.T @ np.linalg.solve(jacobian@jacobian.T+.0002*np.eye(6), error)
             data.qpos[qids] = np.clip(data.qpos[qids]+np.clip(delta, -.12, .12),
                                       controller.bounds[selected, 0]+joint_margin, controller.bounds[selected, 1]-joint_margin)
-        if best[2] < .0001 and best[3] < .1:
+        if pose_validator is not None:
+            mujoco.mj_forward(model, data)
+            position_error = float(np.linalg.norm(position-data.site_xpos[sid]))
+            direction_error = float(np.degrees(np.arccos(np.clip(data.site_xmat[sid].reshape(3, 3)[:, 2]@direction, -1, 1))))
+            if position_error < .005 and direction_error < 10 and pose_validator(data.qpos[controller.q].copy()):
+                best = (position_error, data.qpos[controller.q].copy(), position_error, direction_error)
+                accepted = True
+                break
+        elif best[2] < .0001 and best[3] < .1:
             break
     return {'arm': side, 'target': target_name, 'approach_position': position.tolist(),
             'tip_direction': direction.tolist(), 'joint_positions': best[1].tolist(),
             'position_error_m': best[2], 'direction_error_degrees': best[3],
-            'reachable': best[2] < .005 and best[3] < 10,
+            'reachable': best[2] < .005 and best[3] < 10 and (pose_validator is None or accepted),
             'clearance_status': 'Not collision-certified; inspect geometry before planning motion'}
 
 
