@@ -10,7 +10,7 @@ import numpy as np
 
 from openarm_drummer.scene import build_scene
 from openarm_drummer.strike import StrikeSession
-from openarm_drummer.taught import PoseStore,TaughtStrike
+from openarm_drummer.taught import PoseStore,TaughtStrike,legacy_scene_signature
 from openarm_drummer.teach import TeachingSession, NativeTeachingControls
 from openarm_drummer.teach_panel import JogPanel
 
@@ -42,6 +42,14 @@ class TeachingTests(unittest.TestCase):
         self.store.save_ready('left','snare',self.reference.approach[:7])
         with self.assertRaisesRegex(ValueError,'strike angle'):
             self.store.get('left','snare')
+
+    def test_exact_legacy_save_still_loads_without_migration(self):
+        item = self.save_example()
+        self.assertTrue(item['scene_signature'].startswith('openarm.scene.v2:'))
+        item['scene_signature'] = legacy_scene_signature(self.scene)
+        self.store.document['presets']['left/snare'] = item
+        self.store.write()
+        self.assertEqual(PoseStore(self.model,self.robot,self.scene,self.path).get('left','snare'), item)
 
     def test_rejects_changed_scene_limits_and_changed_arm(self):
         self.save_example()

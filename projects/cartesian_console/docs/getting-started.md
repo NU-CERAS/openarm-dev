@@ -46,7 +46,15 @@ bash projects/cartesian_console/scripts/run_demo.sh
 This starts a ROS execution node with native MuJoCo physics, a separate
 measured-feedback window, and the console preview. Closing the console closes
 its owned processes. The shared compute guard permits one compute job and
-preserves at least 8 GiB of available RAM.
+preserves 8 GiB of available RAM by default. Override the reserve for a command
+with `OPENARM_RAM_RESERVE_GIB=1` (1 GiB), or use `0` to disable that reserve.
+The override is inherited by child workers; the process memory budget, job lock
+and GPU limits still apply. For example:
+
+```bash
+OPENARM_RAM_RESERVE_GIB=1 python -m openarm_sim.compute_guard python -m pytest projects/drum_skill_learning/tests
+```
+
 The default OpenDrummer model uses each drumstick's striking tip as its TCP.
 Use `--model v1.0` for the gripper/tabletop model.
 

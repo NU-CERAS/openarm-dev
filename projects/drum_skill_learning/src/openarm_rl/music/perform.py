@@ -76,7 +76,8 @@ def rollout(env, output, seed=800000, command=None, video=False, reset_options=N
                 controller="native_reference_teacher" if command is None else "learned_actor",
                 controller_label=controller_label,
                 policy_uses_reference_trajectory=command is None or not env.score_only,
-                intensity_control="measured_velocity_calibration" if env.velocity_calibration else "intensity_reward_disabled")
+                intensity_control="fixed_nominal_reference_speed" if command is None else "learned_actor",
+                intensity_feedback="measured_speed_to_midi_calibration" if env.velocity_calibration else "intensity_reward_disabled")
     if video:
         if contact_audio:
             add_contact_audio(output, info["hits"], env.reference.preroll-env.started, env.elapsed-env.started, backing)
@@ -110,6 +111,11 @@ def main():
     parser.add_argument("--seed", type=int, default=800000)
     parser.add_argument("--domain-range", type=float, default=0.)
     parser.add_argument("--position-range", type=float, default=0.)
+    parser.add_argument("--height-offset-m", type=float, default=0.)
+    parser.add_argument("--contact-stiffness-scale", type=float, default=1.)
+    parser.add_argument("--contact-damping-scale", type=float, default=1.)
+    parser.add_argument("--gain-scale", type=float, default=1.)
+    parser.add_argument("--velocity-calibration", type=Path, help="Measured speed-to-MIDI calibration JSON")
     parser.add_argument("--video", action="store_true")
     parser.add_argument("--contact-audio", action="store_true")
     parser.add_argument("--backing-kick", action="store_true", help="Mix the source MIDI foot notes under the contact audio; the video labels them as not played")
@@ -144,6 +150,11 @@ def main():
                                                         mapping=args.mapping, tempo_scale=args.tempo_scale,
                                                         score_only=args.score_only,
                                                         domain_range=args.domain_range, position_range=args.position_range,
+                                                        height_offset_m=args.height_offset_m,
+                                                        contact_stiffness_scale=args.contact_stiffness_scale,
+                                                        contact_damping_scale=args.contact_damping_scale,
+                                                        gain_scale=args.gain_scale,
+                                                        velocity_calibration=args.velocity_calibration,
                                                         render_mode="rgb_array" if args.video else None, camera=args.camera))
         command = None
         label, manifest = None, None

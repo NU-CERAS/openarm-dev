@@ -6,6 +6,10 @@ The project uses `openarm_sim` for existing v1.0 simulation/motion tools and
 `openarm_drummer` for the OpenDrummer model, kit geometry and reference controller.
 The Cartesian Console can run independently of the learning package.
 
+Start with the [MIDI simulator lab](docs/simulator-lab.md) for a reproducible
+MIDI import → simulated drum contacts → performed MIDI → reward workflow,
+real MIDI capture/evaluation, and IK/MPC/learned-controller comparisons.
+
 ## Camera-free OpenDrummer skills
 
 The [MIDI performance guide](docs/midi-performance.md) describes score parsing,
