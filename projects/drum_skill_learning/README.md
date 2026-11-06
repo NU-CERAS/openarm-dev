@@ -8,6 +8,11 @@ The Cartesian Console can run independently of the learning package.
 
 ## Camera-free OpenDrummer skills
 
+The [MIDI performance guide](docs/midi-performance.md) describes score parsing,
+continuous two-arm execution, native contact evaluation and score-conditioned
+ACT/PPO experiments.
+The MIDI workflow uses the original complete drum kit at its original positions.
+
 Use the [fast ACT and PPO guide](docs/fast-strike-training.md) to generate a
 separate reachable seven-drum layout, calibrate faster strokes, collect native
 controller demonstrations, and train independent position/velocity actors.

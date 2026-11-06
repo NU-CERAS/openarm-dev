@@ -78,8 +78,9 @@ class TransferTrajectory:
         return np.maximum(np.maximum(v0,v1),vr),acceleration
 
 
-def clearance_checker(model, controller, start, goal, arm=None):
-    clearance=float(json.loads(CONFIG.with_name('demo_motion.json').read_text())['transfer_clearance_m'])
+def clearance_checker(model, controller, start, goal, arm=None, clearance=None):
+    if clearance is None:
+        clearance=float(json.loads(CONFIG.with_name('demo_motion.json').read_text())['transfer_clearance_m'])
     # Detect near misses on a private model. These margins never change the
     # scene's physical contact geometry or forces.
     model=copy.copy(model)
@@ -108,9 +109,9 @@ def clearance_checker(model, controller, start, goal, arm=None):
     return valid
 
 
-def plan_transfer(model, controller, start, goal, cancel=None, timeout=6., arm=None):
+def plan_transfer(model, controller, start, goal, cancel=None, timeout=6., arm=None, clearance=None):
     start,goal=np.array(start),np.array(goal)
-    valid=clearance_checker(model,controller,start,goal,arm)
+    valid=clearance_checker(model,controller,start,goal,arm,clearance)
     active=np.flatnonzero(np.abs(start-goal)>.005)
     if not len(active):return [start.tolist(),goal.tolist()]
     deadline=time.monotonic()+timeout

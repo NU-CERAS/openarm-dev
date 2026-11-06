@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from torch import nn
 from torchvision.models import resnet18
+from .music_features import ContactTimeFeatures
 
 
 @dataclass
@@ -24,6 +25,7 @@ class ACTConfig:
     image_height: int = 108
     image_feature_stage: int = 4
     action_semantics: str = "absolute_motor_position"
+    rhythmic_time_features: bool = False
 
 
 class ActionChunkTransformer(nn.Module):
@@ -41,7 +43,10 @@ class ActionChunkTransformer(nn.Module):
             raise ValueError("Physical oracle features require the 57-dimensional teacher state")
         indices = [*range(7), 14, *range(16, 23), *range(29, 34), 51, *range(54, 57)] if config.physical_oracle else list(range(config.state_dim))
         self.register_buffer("state_indices", torch.tensor(indices, dtype=torch.long))
-        self.state_projection = nn.Linear(len(indices), config.hidden)
+        if config.rhythmic_time_features and config.state_dim != 283:
+            raise ValueError("Rhythmic time features require the score-only observation schema")
+        self.clock = ContactTimeFeatures() if config.rhythmic_time_features else None
+        self.state_projection = nn.Linear(len(indices)+(64 if config.rhythmic_time_features else 0), config.hidden)
         self.action_projection = nn.Linear(config.action_dim, config.hidden)
         self.cls = nn.Parameter(torch.zeros(1, 1, config.hidden))
         self.posterior_positions = nn.Parameter(torch.randn(1, config.chunk + 2, config.hidden) * 0.02)
@@ -71,8 +76,9 @@ class ActionChunkTransformer(nn.Module):
         raw_state = state
         state = torch.clamp((state - self.state_mean) / self.state_std,
                             -self.config.observation_clip, self.config.observation_clip)[:, self.state_indices]
-        batch = len(state)
-        state_token = self.state_projection(state)[:, None]
+        batch = state.shape[0]
+        projected = torch.cat((state, self.clock(raw_state)), dim=-1) if self.clock is not None else state
+        state_token = self.state_projection(projected)[:, None]
         mean = logvar = None
         if actions is not None:
             if actions.shape[1:] != (self.config.chunk, self.config.action_dim) or padding.shape != actions.shape[:2]:
@@ -123,6 +129,10 @@ class ActionChunkTransformer(nn.Module):
         return (actions - self.action_mean) / self.action_std
 
     def command_reference(self, state):
+        if self.config.action_semantics in ("normalized_joint_reference_residual", "normalized_episode_anchor_residual"):
+            if self.config.action_dim != 14:
+                raise ValueError("Music reference residuals require fourteen actions")
+            return torch.tanh(state[:, -14:])
         return state[:, :8] if self.config.state_dim == 9 else torch.cat((state[:, :7], state[:, 14:15]), dim=1)
 
     def distillation_loss(self, state, actions, padding, images):

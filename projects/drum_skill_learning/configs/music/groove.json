@@ -1,0 +1,13 @@
+{
+  "schema": "openarm.percussion_mapping.v1",
+  "channel": 9,
+  "notes": {
+    "38": "snare",
+    "42": "hi_hat",
+    "43": "floor_tom",
+    "45": "rack_tom_right",
+    "48": "rack_tom_left",
+    "49": "cymbal_left",
+    "51": "cymbal_right"
+  }
+}

@@ -33,9 +33,9 @@ def reach_bound(model, surface, arm):
             "upper_bound_m": float(np.linalg.norm(np.diff(points, axis=0), axis=1).sum())}
 
 
-def plan_center(model, robot, scene, skill):
+def plan_center(model, robot, scene, skill, allow_cross_body=False):
     surface = next(s for s in scene["surfaces"] if s["name"] == skill.target)
-    if (surface["center"][1] > 0) != (skill.arm == "left"):
+    if not allow_cross_body and (surface["center"][1] > 0) != (skill.arm == "left"):
         raise ValueError("The fixed skill arm does not match the target side")
     bounds = reach_bound(model, surface, skill.arm)
     record = {**asdict(skill), "center_m": surface["center"], "reach_bound": bounds,

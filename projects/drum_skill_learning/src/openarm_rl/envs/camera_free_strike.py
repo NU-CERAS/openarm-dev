@@ -14,7 +14,7 @@ from openarm_drummer.strike_planning import plan_wrist_strike
 from ..control.reference import EncoderHistory, JointReference, ResidualCommand, SpeedConditionedReference
 from ..control.servo import EncoderGravity
 from ..planning.strikes import scene_identity
-from ..skills.registry import SKILLS
+from ..skills.registry import SKILLS, StrikeSkill
 
 
 REWARD_VERSION = "camera_free_center_strike_v4"
@@ -25,7 +25,7 @@ class CameraFreeStrikeEnv(gym.Env):
     period = .01
 
     def __init__(self, scene_directory, profile_file, position_range=.01, domain_range=.1,
-                 history_frames=8, render_mode=None, target="snare"):
+                 history_frames=8, render_mode=None, target="snare", arm=None):
         if not 0 <= position_range <= .05 or not 0 <= domain_range <= .2:
             raise ValueError("Invalid position/domain randomization range")
         if render_mode not in (None, "rgb_array"):
@@ -39,7 +39,9 @@ class CameraFreeStrikeEnv(gym.Env):
         if self.action_semantics not in ("wrist_residual", "absolute_wrist_position_velocity"):
             raise ValueError("Unsupported strike action semantics")
         self.action_dim = 2 if self.action_semantics == "absolute_wrist_position_velocity" else 1
-        self.skill = SKILLS[target]
+        if arm not in (None, "left", "right"):
+            raise ValueError("Select a supported stick arm")
+        self.skill = SKILLS[target] if arm is None else StrikeSkill(SKILLS[target].name, target, arm)
         if (self.profile["status"], self.profile["target"], self.profile["arm"]) != ("ready", target, self.skill.arm):
             raise ValueError("A matching validated center profile is required")
         if self.profile["scene_identity"] != scene_identity(self.robot, self.scene):

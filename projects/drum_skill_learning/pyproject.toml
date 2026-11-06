@@ -11,6 +11,7 @@ dependencies = [
     "openarm-sim>=0.1.0", "openarm-drummer>=0.1.0",
     "gymnasium==1.4.0", "stable-baselines3==2.9.0", "torch==2.14.1",
     "imageio>=2.37,<3", "imageio-ffmpeg==0.6.0",
+    "mido==1.3.3",
 ]
 
 [project.optional-dependencies]
@@ -46,6 +47,12 @@ openarm-train-fast-skills = "openarm_rl.pipelines.fast_skills:main"
 openarm-train-strike-act = "openarm_rl.imitation.strike:main"
 openarm-generate-drum-layout = "openarm_rl.planning.reachable_layout:main"
 openarm-calibrate-drum-references = "openarm_rl.planning.fast_references:main"
+openarm-play-midi = "openarm_rl.music.perform:main"
+openarm-arrange-midi = "openarm_rl.music.arrangement:main"
+openarm-midi-repertoire = "openarm_rl.music.repertoire:main"
+openarm-arranged-corpus = "openarm_rl.music.arranged_corpus:main"
+openarm-plan-kit-strikes = "openarm_rl.planning.kit_strikes:main"
+openarm-train-rhythm = "openarm_rl.training.rhythmic:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
