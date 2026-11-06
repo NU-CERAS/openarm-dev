@@ -2,6 +2,9 @@
 
 CERAS @ Northwestern University's shared foundation for OpenArm simulation, controls, and creative robotics.
 
+For MIDI drumming, start with the [simulator lab](projects/drum_skill_learning/docs/simulator-lab.md):
+import a score, simulate contacts, compare controllers, and evaluate recorded drum MIDI.
+
 Clone with `git clone --recurse-submodules <repository-url>` and enter the checkout.
 
 | Machine | Setup | Open the simulator afterward |

@@ -19,8 +19,10 @@ dev = ["pytest>=9,<10"]
 gpu-sim = ["mujoco-warp==3.17.0"]
 tracking = ["wandb==0.31.0"]
 imitation = ["h5py==3.16.0", "torchvision==0.29.1"]
+midi = ["python-rtmidi>=1.5,<2"]
 
 [project.scripts]
+openarm-midi = "openarm_rl.music.workflow:main"
 openarm-train-drum = "openarm_rl.training.train:main"
 openarm-train-pickup-gpu = "openarm_rl.training.warp_train:main"
 openarm-track-training = "openarm_rl.tracking.wandb_tracking:main"

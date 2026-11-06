@@ -84,7 +84,8 @@ class CameraFreeStrikeEnv(gym.Env):
         self.reference = JointReference.from_plan(plan, self.cfg, self.skill.wrist)
         self.reference_bank = SpeedConditionedReference(self.profile["reference_bank"]) if "reference_bank" in self.profile else None
         if self.reference_bank is not None:
-            self.reference = self.reference_bank.at(.6)
+            initial_speed = float(np.clip(.6, self.reference_bank.speeds[0], self.reference_bank.speeds[-1]))
+            self.reference = self.reference_bank.at(initial_speed)
         self.data = mujoco.MjData(self.model)
         self.surface = next(s for s in self.scene["surfaces"] if s["name"] == target)
         self.sid = self.model.site(f"{self.skill.arm}_stick_tip").id
@@ -153,7 +154,8 @@ class CameraFreeStrikeEnv(gym.Env):
         self.peak_force = self.penetration = self.energy = 0.0
         self.unsafe = False
         self.failure = None
-        self.target_speed = float(self.np_random.uniform(.35, .85))
+        speed_range = (.35, .85) if self.reference_bank is None else self.reference_bank.speeds[[0, -1]]
+        self.target_speed = float(self.np_random.uniform(*speed_range))
         if self.reference_bank is not None:
             self.reference = self.reference_bank.at(self.target_speed)
         self.delay_steps = int(self.np_random.integers(0, 4)) if self.domain_range else 0

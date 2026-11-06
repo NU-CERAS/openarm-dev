@@ -126,8 +126,10 @@ class SpeedConditionedReference:
             raise ValueError("Unsupported speed-conditioned reference")
         self.speeds = np.asarray(document["speeds_m_s"], dtype=float)
         self.references = [JointReference.load(row) for row in document["references"]]
-        if len(self.references) != len(self.speeds) or len(self.speeds) < 2 or np.any(np.diff(self.speeds) <= 0):
-            raise ValueError("Reference speeds must increase strictly")
+        if (self.speeds.ndim != 1 or len(self.references) != len(self.speeds) or len(self.speeds) < 1
+                or not np.isfinite(self.speeds).all() or np.any(self.speeds <= 0)
+                or np.any(np.diff(self.speeds) <= 0)):
+            raise ValueError("Reference speeds must be positive, finite and increase strictly")
         first = self.references[0]
         for reference in self.references:
             if (reference.wrist != first.wrist or reference.active_joints != first.active_joints
@@ -137,6 +139,9 @@ class SpeedConditionedReference:
     def at(self, speed):
         if not np.isfinite(speed) or not self.speeds[0] <= speed <= self.speeds[-1]:
             raise ValueError("Requested speed is outside the reference bank")
+        if len(self.references) == 1:
+            # One measured operating point makes no interpolation claim.
+            return JointReference.load(self.references[0].document())
         index = min(len(self.speeds) - 2, max(0, int(np.searchsorted(self.speeds, speed)) - 1))
         weight = float((speed - self.speeds[index]) / (self.speeds[index + 1] - self.speeds[index]))
         first, second = self.references[index:index + 2]

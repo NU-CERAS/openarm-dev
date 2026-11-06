@@ -28,7 +28,13 @@ def test_reference_runtime_commands_the_validated_teacher(rhythm_options):
             if command is None:
                 break
             np.testing.assert_allclose(runtime.last_action, expected, atol=1e-5)
-            _, _, done, _, info = env.step(runtime.last_action)
+            previous_q, previous_dq = env.data.qpos[env.controller.q].copy(), env.data.qvel[env.controller.v].copy()
+            _, _, done, _, info = env.step_command(*command, target_position=runtime.previous_target)
+            np.testing.assert_array_equal(env.trace[-1]["motor_target_rad"], command[0])
+            np.testing.assert_array_equal(env.trace[-1]["motor_velocity_rad_s"], command[1])
+            np.testing.assert_array_equal(env.trace[-1]["previous_measured_joints_rad"], previous_q)
+            np.testing.assert_array_equal(env.trace[-1]["previous_measured_velocity_rad_s"], previous_dq)
+            np.testing.assert_array_equal(env.trace[-1]["measured_velocity_rad_s"], env.data.qvel[env.controller.v])
             if done:
                 break
     assert info["correct_hits"] == 2 and not info["unsafe_contact"], info
@@ -37,9 +43,22 @@ def test_reference_runtime_commands_the_validated_teacher(rhythm_options):
 def test_one_failed_required_run_blocks_the_performance():
     good = {"condition": "deployment", "required": True, "is_success": True, "completed": True, "failure": None}
     bad = {**good, "is_success": False}
-    assert judge([good, good])
-    assert not judge([good, bad])
-    assert judge([good, {**bad, "required": False}])
+    nominal = {**good, "condition": "nominal"}
+    assert judge([nominal, good, good])
+    assert not judge([nominal, good, bad])
+    assert judge([nominal, good, {**bad, "required": False}])
+    assert not judge([])
+    assert not judge([nominal])
+    assert not judge([good])
+    assert not judge([nominal, {**good, "required": False}])
+    assert not judge([nominal, {**good, "unsafe_contact": True}])
+
+
+@pytest.mark.parametrize("argument,value", [("seeds", 0), ("seeds", -1), ("seeds", 1.5),
+                                             ("workers", 0), ("workers", -1), ("workers", False)])
+def test_rehearsal_rejects_empty_or_invalid_work_before_loading_models(argument, value):
+    with pytest.raises(ValueError, match="positive integer"):
+        rehearse("missing", "missing", "missing", **{argument: value})
 
 
 def test_rehearsal_certifies_only_the_exact_score(rhythm_options, tmp_path):
@@ -56,6 +75,10 @@ def test_rehearsal_certifies_only_the_exact_score(rhythm_options, tmp_path):
     (tmp_path/"failed.json").write_text(json.dumps({**report, "passed": False}))
     with pytest.raises(ValueError, match="did not pass"):
         ReferenceRuntime.from_rehearsal(tmp_path/"failed.json")
+    nominal_only = {**report, "runs": [run for run in report["runs"] if run["condition"] == "nominal"]}
+    (tmp_path/"nominal-only.json").write_text(json.dumps(nominal_only))
+    with pytest.raises(ValueError, match="did not pass"):
+        ReferenceRuntime.from_rehearsal(tmp_path/"nominal-only.json")
 
 
 class FakeClient:

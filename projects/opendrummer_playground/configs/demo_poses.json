@@ -13,7 +13,7 @@
         0.13968648961243016,
         -1.0054684940642458
       ],
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "scene_signature": "openarm.scene.v2:13cc8d74f27f25195e7f77542eefaa980898866d57ffd4f7147a0bb1f203fb73",
       "downstroke_seconds": 0.09,
       "retract_seconds": 0.65,
       "strike_joint7_rad": -1.5674366684706706
@@ -30,7 +30,7 @@
         0.13968648961243016,
         -0.3209875555167598
       ],
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "scene_signature": "openarm.scene.v2:13cc8d74f27f25195e7f77542eefaa980898866d57ffd4f7147a0bb1f203fb73",
       "downstroke_seconds": 0.09,
       "retract_seconds": 0.65,
       "strike_joint7_rad": -1.084515621682961
@@ -47,7 +47,7 @@
         0.13968648961243016,
         -0.7836840553421787
       ],
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "scene_signature": "openarm.scene.v2:13cc8d74f27f25195e7f77542eefaa980898866d57ffd4f7147a0bb1f203fb73",
       "downstroke_seconds": 0.09,
       "retract_seconds": 0.65,
       "strike_joint7_rad": -1.4759120237430166
@@ -64,7 +64,7 @@
         -0.05710863599860342,
         -0.9777711483938548
       ],
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "scene_signature": "openarm.scene.v2:13cc8d74f27f25195e7f77542eefaa980898866d57ffd4f7147a0bb1f203fb73",
       "downstroke_seconds": 0.09,
       "retract_seconds": 0.65,
       "strike_joint7_rad": -1.570796
@@ -81,7 +81,7 @@
         0.0,
         0.9107901911662013
       ],
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "scene_signature": "openarm.scene.v2:13cc8d74f27f25195e7f77542eefaa980898866d57ffd4f7147a0bb1f203fb73",
       "downstroke_seconds": 0.09,
       "retract_seconds": 0.65,
       "strike_joint7_rad": 1.3959736449022349
@@ -98,7 +98,7 @@
         0.17753038765712295,
         0.9382133056913408
       ],
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "scene_signature": "openarm.scene.v2:13cc8d74f27f25195e7f77542eefaa980898866d57ffd4f7147a0bb1f203fb73",
       "downstroke_seconds": 0.09,
       "retract_seconds": 0.65,
       "strike_joint7_rad": 1.570796
@@ -115,7 +115,7 @@
         0.17753077561921157,
         0.8804876496159214
       ],
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098",
+      "scene_signature": "openarm.scene.v2:13cc8d74f27f25195e7f77542eefaa980898866d57ffd4f7147a0bb1f203fb73",
       "downstroke_seconds": 0.09,
       "retract_seconds": 0.65,
       "strike_joint7_rad": 1.495450992842179
