@@ -94,6 +94,20 @@ def rollout(env, output, seed=800000, command=None, video=False, reset_options=N
     return info
 
 
+def reference_playback_score_only(args) -> bool:
+    """Command path for this performance.
+
+    Without an actor, the reference teacher plays the score through the score-only
+    command path: the same path `rhythmic_references` qualifies strokes under and
+    that `ReferenceRuntime` sends to hardware. The trajectory-input path rate-limits
+    absolute joint targets to 120 rad/s^2 for learned residual actors. Compact music
+    strokes lift the wrist far faster than that, so the limited target lags and then
+    overshoots the ready pose after an isolated hit, tripping the 0.2 rad tracking
+    stop. An actor keeps the input schema it was trained with.
+    """
+    return args.score_only or args.actor is None
+
+
 @budgeted("openarm_rl.music.perform")
 def main():
     parser = argparse.ArgumentParser(description="Validate and perform MIDI percussion with continuous native robot physics")
@@ -142,13 +156,14 @@ def main():
     (args.output/"preflight.json").write_text(json.dumps(preflight, indent=2))
     if not preflight["executable"]:
         raise RuntimeError(f"MIDI cannot be scheduled; inspect {args.output/'preflight.json'}")
+    score_only = reference_playback_score_only(args)
     with ExitStack() as resources:
         if args.xvfb:
             display = NativeDisplay(args.xvfb, args.output / "display")
             resources.callback(display.close)
         env = resources.enter_context(RhythmicDrummingEnv(args.scene_directory, args.profiles, midi,
                                                         mapping=args.mapping, tempo_scale=args.tempo_scale,
-                                                        score_only=args.score_only,
+                                                        score_only=score_only,
                                                         domain_range=args.domain_range, position_range=args.position_range,
                                                         height_offset_m=args.height_offset_m,
                                                         contact_stiffness_scale=args.contact_stiffness_scale,

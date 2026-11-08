@@ -37,6 +37,8 @@ Simulation writes:
 | `performed.mid` + `performed.mid.json` | Contact onsets and their simulation provenance/clock offset |
 | `midi-feedback.json` | Target-versus-contact matching and reward components |
 
+Without `--actor`, the reference teacher always plays through the score-only command path, the same path `rhythmic_references` qualifies strokes under and `ReferenceRuntime` sends to hardware. The trajectory-input path limits absolute joint-target acceleration to 120 rad/s² for learned residual actors; compact music strokes exceed that, and the limited target overshoots the ready pose after an isolated hit. An actor keeps the schema it was trained with.
+
 Failed performances still export their measured contacts when an evaluation exists and return a nonzero exit status. Add `--video --contact-audio` for a rendered video with synthetic contact-triggered audio. This audio is not acoustic validation. Vary `--height-offset-m`, `--contact-stiffness-scale`, `--contact-damping-scale`, and `--gain-scale` to test sensitivity.
 
 Without `--velocity-calibration calibration.json`, simulated note-ons use **velocity 64 solely as a MIDI placeholder**; intensity scoring is disabled. With calibration, intensity is an estimate derived from simulated contact speed, not a physical drum-module measurement. Keep each `.mid.json` beside its MIDI file. MIDI note-off lengths are serialization markers, not measured contact durations. Raw forces/impulses remain in the simulation report.
