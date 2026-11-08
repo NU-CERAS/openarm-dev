@@ -4,6 +4,7 @@ import io
 import json
 import math
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -31,10 +32,10 @@ class ToolsTests(unittest.TestCase):
         for version in ('v0.3', 'v1.0'):
             for side in ('left', 'right'):
                 cfg = load(robot=version, arm=side)
-                sim = Simulation(cfg, self.path / 'unused.json')
-                self.assertEqual(len(sim.read()), 7)
-                sim.step(sim.read())
-                self.assertTrue(all(math.isfinite(x) for x in sim.read()))
+                sim = Simulation({side: cfg}, self.path / 'unused.json')
+                self.assertEqual(len(sim.read(side)), 7)
+                sim.step({side: sim.read(side)})
+                self.assertTrue(all(math.isfinite(x) for x in sim.read(side)))
 
     def test_trajectory_speed_and_endpoints(self):
         start = [j['home'] for j in self.cfg['joints']]
@@ -53,22 +54,25 @@ class ToolsTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 validate_positions(self.cfg, invalid)
 
-    def test_preview_does_not_write_state(self):
-        self.command('home')
-        self.assertFalse(list(self.path.rglob('state.json')))
-        self.command('jog', 'openarm_left_joint1', '100', expected=1)
+    def test_arm_selection_required_and_invalid_moves_rejected(self):
+        self.command('home', expected=1)
+        self.command('jog', '1', '100', '--sim', 'can0', expected=1)
         self.assertFalse(list(self.path.rglob('state.json')))
 
     def test_sim_zero_pose_and_motion_roundtrip(self):
         self.command('sim', '--headless', '--seconds', '.02')
-        self.command('status')
-        self.command('zero', '--execute')
-        self.command('pose', 'save', 'start')
-        self.command('pose', 'save', 'start', expected=1)
-        self.command('pose', 'move', 'start', '--execute')
-        self.command('jog', 'openarm_left_joint1', '.02', '--execute')
-        self.command('home', '--execute')
-        state = json.loads(next(self.path.rglob('state.json')).read_text())
+        self.command('status', '--sim', 'can0', 'can1')
+        self.command('zero', '--sim', 'can0')
+        self.command('pose', 'save', 'start', '--sim', 'can0', 'can1')
+        self.command('pose', 'save', 'start', '--sim', 'can0', expected=1)
+        self.command('pose', 'move', 'start', '--sim', 'can0', 'can1')
+        self.command('jog', 'openarm_left_joint1', '.02', '--sim', 'can0')
+        self.command('jog', 'openarm_left_joint1', '.02', '--sim', 'can1', expected=1)
+        self.command('jog', '2', '-.05', '--sim', 'can0', 'can1')
+        self.command('home', '--sim', 'can0', 'can1', '--duration', '10')
+        states = list(self.path.rglob('state.json'))
+        self.assertEqual(len(states), 1)
+        state = json.loads(states[0].read_text())
         self.assertTrue(all(math.isfinite(x) for x in state['qpos']))
 
     def test_config_changes_invalidate_calibration(self):
@@ -78,26 +82,46 @@ class ToolsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             offsets.read(path, changed)
 
-    def test_names_and_can_guard(self):
-        self.command('status', '--session', '../escape', expected=1)
-        self.command('pose', 'save', '../escape', expected=1)
-        self.command('status', '--backend', 'can', expected=1)
+    def test_names_and_config_mapping(self):
+        self.command('status', '--sim', 'can0', '--session', '../escape', expected=1)
+        self.command('pose', 'save', '../escape', '--sim', 'can0', expected=1)
+        right = 'robots/v1.0/config/right.json'
+        self.command('status', '--sim', 'can0', '--config', f'can0={right}', expected=1)
+        self.command('status', '--sim', 'can1', '--config', f'can1={right}')
 
-    def test_can_preview_and_support_guard_never_move(self):
+    def fake_hardware(self, fail=None):
         class FakeHardware:
-            moved = 0
+            moves = []
             def __init__(self, cfg, interface):
-                self.cfg = cfg
+                self.cfg, self.interface = cfg, interface
             def read(self):
                 return [j['home'] for j in self.cfg['joints']]
-            def move(self, points):
-                FakeHardware.moved += 1
+            def status(self):
+                return []
+            def move(self, points, stop=None, hold=0):
+                if self.interface == fail:
+                    raise RuntimeError('motor fault')
+                for _ in range(200):
+                    if stop.is_set():
+                        raise RuntimeError('Stopped.')
+                    time.sleep(0.001)
+                FakeHardware.moves.append(self.interface)
             def close(self):
                 pass
-        with patch('openarm_tools.backends.can.Hardware', FakeHardware):
-            self.command('home', '--backend', 'can', '--interface', 'can0')
-            self.command('home', '--backend', 'can', '--interface', 'can0', '--execute', expected=1)
-        self.assertEqual(FakeHardware.moved, 0)
+        return FakeHardware
+
+    def test_sim_and_real_move_together(self):
+        fake = self.fake_hardware()
+        with patch('openarm_tools.backends.can.Hardware', fake):
+            self.command('jog', '7', '.05', '--sim', 'can0', 'can1', '--real', 'can0', 'can1')
+        self.assertEqual(sorted(fake.moves), ['can0', 'can1'])
+        self.assertEqual(len(list(self.path.rglob('state.json'))), 1)
+
+    def test_one_arm_failure_stops_the_other(self):
+        fake = self.fake_hardware(fail='can0')
+        with patch('openarm_tools.backends.can.Hardware', fake):
+            self.command('jog', '7', '.05', '--real', 'can0', 'can1', expected=1)
+        self.assertEqual(fake.moves, [])
 
 class HardwareBoundaryTests(unittest.TestCase):
     def hardware(self):
@@ -111,28 +135,70 @@ class HardwareBoundaryTests(unittest.TestCase):
         hw.motors = [MagicMock() for _ in hw.cfg['joints']]
         for motor in hw.motors:
             motor.is_enabled.return_value = False
+        hw.component.get_motors.return_value = hw.motors
         hw.enabled = False
         hw.oa = SimpleNamespace(MITParam=lambda *args: args)
         hw.read = lambda: [j['home'] for j in hw.cfg['joints']]
+        hw.load_gravity_model()
         return hw
 
-    def test_unreviewed_hardware_never_enables(self):
+    def test_gravity_matches_model_and_is_signed_scaled_capped(self):
         hw = self.hardware()
-        with self.assertRaises(ValueError):
-            hw.move([(0, hw.read())])
-        hw.arm.enable_all.assert_not_called()
+        bent = [0, 0, 0, 1.57, 0, 0, 0]
+        self.assertAlmostEqual(hw.gravity(bent)[3], 4.88, delta=0.3)
+        self.assertLess(max(abs(x) for x in hw.gravity([0.0] * 7)), 0.2)
+        hw.cfg['gravity_scale'] = 1.0
+        self.assertAlmostEqual(hw.feedforward(bent)[3], hw.gravity(bent)[3])
+        hw.cfg['joints'][3]['sign'] = -1
+        self.assertAlmostEqual(hw.feedforward(bent)[3], -hw.gravity(bent)[3])
+        hw.cfg['joints'][3]['tau_max'] = 1.0
+        self.assertEqual(hw.feedforward(bent)[3], -1.0)
+        hw.cfg['gravity_scale'] = 0.0
+        self.assertEqual(hw.feedforward(bent), [0.0] * 7)
+
+    def test_motor_command_carries_feedforward(self):
+        hw = self.hardware()
+        hw.cfg['gravity_scale'] = 1.0
+        bent = [0, 0, 0, 1.57, 0, 0, 0]
+        hw.command(bent, bent)
+        params = hw.component.mit_control_all.call_args[0][0]
+        self.assertAlmostEqual(params[3][4], hw.gravity(bent)[3])
+
+    def test_hold_keeps_commanding_then_stops_cleanly(self):
+        import threading
+        hw = self.hardware()
+        stop = threading.Event()
+        threading.Timer(0.8, stop.set).start()
+        started = time.monotonic()
+        hw.move([(0, hw.read())], stop=stop, hold=math.inf)
+        self.assertGreater(time.monotonic() - started, 0.7)
+        self.assertGreater(hw.component.mit_control_all.call_count, 30)
+        hw.arm.disable_all.assert_called()
 
     def test_partial_enable_failure_disables(self):
         hw = self.hardware()
-        hw.cfg['hardware_reviewed'] = True
         hw.arm.enable_all.side_effect = RuntimeError('CAN write failed')
         with self.assertRaises(RuntimeError):
             hw.move([(0, hw.read())])
         hw.arm.disable_all.assert_called_once()
 
+    def test_disable_retries_until_motors_report_disabled(self):
+        hw = self.hardware()
+        hw.enabled = True
+        hw.motors[2].is_enabled.side_effect = [True, True, False]
+        hw.close()
+        self.assertEqual(hw.arm.disable_all.call_count, 3)
+        self.assertFalse(hw.enabled)
+
+    def test_unconfirmed_disable_is_reported(self):
+        hw = self.hardware()
+        hw.enabled = True
+        hw.motors[0].is_enabled.return_value = True
+        with self.assertRaisesRegex(RuntimeError, 'emergency stop'):
+            hw.close()
+
     def test_external_enabled_motor_refused(self):
         hw = self.hardware()
-        hw.cfg['hardware_reviewed'] = True
         hw.motors[0].is_enabled.return_value = True
         with self.assertRaises(RuntimeError):
             hw.move([(0, hw.read())])

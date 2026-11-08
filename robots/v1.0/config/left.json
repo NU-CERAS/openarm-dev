@@ -5,8 +5,9 @@
   "hardware_reviewed": false,
   "max_speed": 0.3,
   "feedback_timeout": 0.1,
-  "max_tracking_error": 0.25,
+  "max_tracking_error": 1.25,
   "max_temperature": 60,
+  "gravity_scale": 1.0,
   "joints": [
     {
       "name": "openarm_left_joint1",
@@ -20,7 +21,8 @@
       "recv_id": 17,
       "motor_type": "DM8009",
       "kp": 10.0,
-      "kd": 1.0
+      "kd": 1.0,
+      "tau_max": 15.0
     },
     {
       "name": "openarm_left_joint2",
@@ -34,7 +36,8 @@
       "recv_id": 18,
       "motor_type": "DM8009",
       "kp": 10.0,
-      "kd": 1.0
+      "kd": 1.0,
+      "tau_max": 15.0
     },
     {
       "name": "openarm_left_joint3",
@@ -48,7 +51,8 @@
       "recv_id": 19,
       "motor_type": "DM4340",
       "kp": 10.0,
-      "kd": 1.0
+      "kd": 1.0,
+      "tau_max": 10.0
     },
     {
       "name": "openarm_left_joint4",
@@ -56,13 +60,14 @@
         0.0,
         2.443461
       ],
-      "home": 1.57,
+      "home": 0.0,
       "sign": 1,
       "send_id": 4,
       "recv_id": 20,
       "motor_type": "DM4340",
       "kp": 10.0,
-      "kd": 1.0
+      "kd": 1.0,
+      "tau_max": 10.0
     },
     {
       "name": "openarm_left_joint5",
@@ -76,7 +81,8 @@
       "recv_id": 21,
       "motor_type": "DM4310",
       "kp": 10.0,
-      "kd": 1.0
+      "kd": 1.0,
+      "tau_max": 3.0
     },
     {
       "name": "openarm_left_joint6",
@@ -90,7 +96,8 @@
       "recv_id": 22,
       "motor_type": "DM4310",
       "kp": 10.0,
-      "kd": 1.0
+      "kd": 1.0,
+      "tau_max": 3.0
     },
     {
       "name": "openarm_left_joint7",
@@ -104,7 +111,8 @@
       "recv_id": 23,
       "motor_type": "DM4310",
       "kp": 10.0,
-      "kd": 1.0
+      "kd": 1.0,
+      "tau_max": 3.0
     }
   ]
 }

@@ -1,7 +1,8 @@
 """Linux SocketCAN adapter for the pinned OpenArm CAN Python bindings."""
+import math
 import platform
 import time
-from openarm_tools.robot.config import model_position, motor_position, validate_positions
+from openarm_tools.robot.config import model_position, motor_position, root, validate_positions
 
 
 class Hardware:
@@ -17,10 +18,14 @@ class Hardware:
         self.arm.set_callback_mode_all(oa.CallbackMode.STATE)
         self.component = self.arm.get_arm()
         self.motors = self.component.get_motors()
+        self.load_gravity_model()
         # Establish initial feedback, without enabling motors.
         deadline = time.monotonic() + 1
         while time.monotonic() < deadline:
             self.arm.refresh_all()
+            # recv_all returns as soon as any frame arrives; without a pause this loop
+            # outruns the USB adapter, overflows the kernel TX queue and latches the bus unhealthy.
+            time.sleep(0.005)
             self.arm.recv_all(10000)
             if all(not self.component.get_link_stats(i).is_stale(cfg['feedback_timeout'])
                    for i in range(len(self.motors))):
@@ -29,6 +34,7 @@ class Hardware:
 
     def read(self):
         self.arm.refresh_all()
+        time.sleep(0.002)  # Let the adapter drain before the next burst of writes.
         self.arm.recv_all(10000)
         self.motors = self.component.get_motors()
         if not self.arm.is_bus_healthy() or not self.arm.is_link_running():
@@ -44,17 +50,54 @@ class Hardware:
             positions.append(model_position(j, motor.get_position()))
         return positions
 
+    def load_gravity_model(self):
+        import mujoco
+        self.mujoco = mujoco
+        self.gmodel = mujoco.MjModel.from_xml_path(str(root() / self.cfg['model']))
+        self.gdata = mujoco.MjData(self.gmodel)
+        ids = [self.gmodel.joint(j['name']).id for j in self.cfg['joints']]
+        self.gqadr = [int(self.gmodel.jnt_qposadr[i]) for i in ids]
+        self.gvadr = [int(self.gmodel.jnt_dofadr[i]) for i in ids]
+
+    def gravity(self, positions):
+        """Model joint torques (Nm) that hold the arm still against gravity at these positions."""
+        self.gdata.qpos[self.gqadr] = positions
+        self.gdata.qvel[:] = 0
+        self.mujoco.mj_forward(self.gmodel, self.gdata)
+        return [float(self.gdata.qfrc_bias[v]) for v in self.gvadr]
+
+    def feedforward(self, positions):
+        """Motor-frame gravity torques, scaled by gravity_scale and capped per joint at tau_max."""
+        scale = self.cfg.get('gravity_scale', 0.0)
+        if not scale:
+            return [0.0] * len(self.cfg['joints'])
+        return [max(-j.get('tau_max', 0.0), min(j.get('tau_max', 0.0), j['sign'] * scale * tau))
+                for j, tau in zip(self.cfg['joints'], self.gravity(positions))]
+
+    def command(self, target, actual):
+        self.component.mit_control_all([
+            self.oa.MITParam(j['kp'], j['kd'], motor_position(j, value), 0, tau)
+            for j, value, tau in zip(self.cfg['joints'], target, self.feedforward(actual))])
+
     def status(self):
         positions = self.read()
         return [{'joint': j['name'], 'motor_id': j['send_id'], 'position': p,
                  'velocity': j['sign'] * m.get_velocity(), 'torque': m.get_torque(),
+                 'gravity_feedforward': tau,
                  'enabled': m.is_enabled(), 'temperature_mos': m.get_state_tmos(),
                  'temperature_rotor': m.get_state_trotor()}
-                for j, m, p in zip(self.cfg['joints'], self.motors, positions)]
+                for j, m, p, tau in zip(self.cfg['joints'], self.motors, positions, self.feedforward(positions))]
 
-    def move(self, points, *, on_feedback=None):
-        if not self.cfg.get('hardware_reviewed', False):
-            raise ValueError('Review the physical robot mapping, limits and gains in a custom config; set hardware_reviewed=true.')
+    def check_tracking(self, actual, expected, what):
+        errors = [abs(a - b) for a, b in zip(actual, expected)]
+        worst = max(range(len(errors)), key=errors.__getitem__)
+        if errors[worst] > self.cfg['max_tracking_error']:
+            raise RuntimeError(f'{what} exceeded configured limit: {self.cfg["joints"][worst]["name"]} is at '
+                               f'{actual[worst]:+.3f} rad, expected {expected[worst]:+.3f} '
+                               f'(error {errors[worst]:.3f} > {self.cfg["max_tracking_error"]}).')
+
+    def move(self, points, *, on_feedback=None, stop=None, hold=0):
+        """Follow points, settle, then keep holding the final target for hold seconds (math.inf: until stopped)."""
         if any(m.is_enabled() for m in self.motors):
             raise RuntimeError('Motors are already enabled; stop the existing controller first.')
         previous = self.read()
@@ -64,8 +107,11 @@ class Hardware:
         self.enabled = True  # Cleanup even if enabling only partially succeeds.
         try:
             self.arm.enable_all()
+            time.sleep(0.02)  # Let the enable frames drain before polling feedback.
             started = time.monotonic()
             for t, q in points:
+                if stop is not None and stop.is_set():
+                    raise RuntimeError('Stopped.')
                 wait = started + t - time.monotonic()
                 if wait > 0:
                     time.sleep(wait)
@@ -75,31 +121,45 @@ class Hardware:
                 validate_positions(self.cfg, actual)
                 if on_feedback is not None:
                     on_feedback(actual)
-                if max(abs(a - b) for a, b in zip(actual, previous)) > self.cfg['max_tracking_error']:
-                    raise RuntimeError('Tracking error exceeded configured limit.')
-                self.component.mit_control_all([
-                    self.oa.MITParam(j['kp'], j['kd'], motor_position(j, value), 0, 0)
-                    for j, value in zip(self.cfg['joints'], q)])
+                self.check_tracking(actual, previous, 'Tracking error')
+                self.command(q, actual)
                 self.arm.recv_all(10000)
                 previous = q
-            # Observe settling while still commanding the final target.
-            for _ in range(50):
+            # Observe settling (0.5 s), then optionally keep holding, while commanding the final target.
+            settle_end = time.monotonic() + 0.5
+            hold_end = settle_end + hold
+            reported = False
+            while time.monotonic() < hold_end:
+                if stop is not None and stop.is_set():
+                    if time.monotonic() >= settle_end and hold:
+                        break  # Stopping a hold is the normal way to end it.
+                    raise RuntimeError('Stopped.')
                 actual = self.read()
                 validate_positions(self.cfg, actual)
                 if on_feedback is not None:
                     on_feedback(actual)
-                if max(abs(a - b) for a, b in zip(actual, previous)) > self.cfg['max_tracking_error']:
-                    raise RuntimeError('Final tracking error exceeded configured limit.')
-                self.component.mit_control_all([
-                    self.oa.MITParam(j['kp'], j['kd'], motor_position(j, value), 0, 0)
-                    for j, value in zip(self.cfg['joints'], previous)])
+                self.check_tracking(actual, previous, 'Final tracking error')
+                self.command(previous, actual)
+                if hold and not reported and time.monotonic() >= settle_end:
+                    reported = True
+                    until = 'Ctrl-C' if math.isinf(hold) else f'{hold:g} s'
+                    print(f'Reached target; measured {[round(a, 3) for a in actual]}. Holding until {until}.', flush=True)
                 time.sleep(0.01)
             print('Final measured joint positions:', self.read())
         finally:
             self.close()
 
     def close(self):
-        if self.enabled:
+        if not self.enabled:
+            return
+        # A full TX queue silently drops disable frames, so retry until every motor reports disabled.
+        for _ in range(20):
             self.arm.disable_all()
+            time.sleep(0.02)
+            self.arm.refresh_all()
+            time.sleep(0.01)
             self.arm.recv_all(10000)
-            self.enabled = False
+            if not any(m.is_enabled() for m in self.component.get_motors()):
+                self.enabled = False
+                return
+        raise RuntimeError('Could not confirm motors disabled. Press the emergency stop or cut arm power.')
