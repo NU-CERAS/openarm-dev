@@ -1,0 +1,16 @@
+{
+  "verified": true,
+  "note": "Operator confirmed OpenArm/MuJoCo zero pose and positive joint directions in this session on 2026-10-25. Uses q_model=q_motor, can0=right, can1=left. Jaw geometry uses the model's closed/default pose; grippers are not driven. Reverify this mapping after changing motor zeros or assembly.",
+  "right": {
+    "interface": "can0",
+    "sign": [1, 1, 1, 1, 1, 1, 1],
+    "offset_rad": [0, 0, 0, 0, 0, 0, 0],
+    "jaw_qpos_m": [0, 0]
+  },
+  "left": {
+    "interface": "can1",
+    "sign": [1, 1, 1, 1, 1, 1, 1],
+    "offset_rad": [0, 0, 0, 0, 0, 0, 0],
+    "jaw_qpos_m": [0, 0]
+  }
+}

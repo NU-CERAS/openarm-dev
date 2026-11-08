@@ -40,9 +40,13 @@ def load(path=None, robot='v1.0', arm='left'):
         for key in ('kp', 'kd'):
             if finite(j[key]) < 0:
                 raise ValueError(f'{key} must be nonnegative.')
+        if finite(j.get('tau_max', 0.0)) < 0:
+            raise ValueError('tau_max must be nonnegative.')
     for key in ('max_speed', 'feedback_timeout', 'max_tracking_error', 'max_temperature'):
         if finite(cfg[key]) <= 0:
             raise ValueError(f'{key} must be positive.')
+    if not 0 <= finite(cfg.get('gravity_scale', 0.0)) <= 1.5:
+        raise ValueError('gravity_scale must be between 0 and 1.5.')
     if type(cfg.get('hardware_reviewed')) is not bool:
         raise ValueError('hardware_reviewed must be a JSON boolean.')
     for key in ('send_id', 'recv_id'):

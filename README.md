@@ -38,21 +38,20 @@ execution use the shared ROS 2 trajectory-action and joint-state interface.
 
 ## Common commands
 
-Simulation is the default. Angles and increments are radians. Commands work from any directory after editable installation.
+Every arm command takes `--sim` and/or `--real` followed by `can0` (left arm) and/or `can1` (right arm). Commands run immediately; there is no preview step. Giving both `--sim` and `--real` runs them at the same time. Angles and increments are radians. Commands work from any directory after editable installation.
 
 ```sh
-openarm status
-openarm zero                         # preview the software zero reference
-openarm zero --execute               # record current joint positions as zero
-openarm home                        # preview return to recorded zero/default home
-openarm home --execute --duration 10
-openarm jog openarm_left_joint1 0.05 --execute
-openarm pose save ready
-openarm pose move ready --execute
-openarm sim --headless --seconds 1
+openarm status --sim can0 can1
+openarm zero --sim can0                        # record current joint positions as zero
+openarm home --sim can0 can1 --duration 10     # return to recorded zero/default home
+openarm jog 1 0.05 --sim can0                  # joint number applies to each selected arm
+openarm jog openarm_right_joint7 0.1 --real can1
+openarm pose save ready --sim can1
+openarm pose move ready --sim can1 --real can1 # sim and real arm together
+openarm sim --headless --seconds 1             # both arms; no --sim/--real needed
 ```
 
-The equivalents in `scripts/` call the same shared implementation. Use `--help` after a command for options. Hardware instructions and release behavior are in [docs/hardware.md](docs/hardware.md). `can-check` is a hardware diagnostic; it never enables motors.
+`can0` and `can1` load `robots/v1.0/config/left.json` and `right.json`; override one with `--config can1=path/to/right.json`. The equivalents in `scripts/` call the same shared implementation. Use `--help` after a command for options. Hardware instructions and release behavior are in [docs/hardware.md](docs/hardware.md). `can-check --real ...` is a hardware diagnostic; it never enables motors.
 
 ## Structure
 
