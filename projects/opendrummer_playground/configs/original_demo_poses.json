@@ -15,7 +15,7 @@
         -1.221106051938675
       ],
       "strike_joint7_rad": -0.8281003958278647,
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098"
+      "scene_signature": "openarm.scene.v2:13cc8d74f27f25195e7f77542eefaa980898866d57ffd4f7147a0bb1f203fb73"
     },
     "right/rack_tom_right": {
       "arm": "right",
@@ -30,7 +30,7 @@
         1.213556210453556
       ],
       "strike_joint7_rad": 0.8315945135448128,
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098"
+      "scene_signature": "openarm.scene.v2:13cc8d74f27f25195e7f77542eefaa980898866d57ffd4f7147a0bb1f203fb73"
     },
     "right/floor_tom": {
       "arm": "right",
@@ -45,7 +45,7 @@
         1.3582092946754765
       ],
       "strike_joint7_rad": 1.0518161817894631,
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098"
+      "scene_signature": "openarm.scene.v2:13cc8d74f27f25195e7f77542eefaa980898866d57ffd4f7147a0bb1f203fb73"
     },
     "left/hi_hat": {
       "arm": "left",
@@ -60,7 +60,7 @@
         -1.3506412179823433
       ],
       "strike_joint7_rad": -1.05656431093129,
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098"
+      "scene_signature": "openarm.scene.v2:13cc8d74f27f25195e7f77542eefaa980898866d57ffd4f7147a0bb1f203fb73"
     },
     "left/cymbal_left": {
       "arm": "left",
@@ -75,7 +75,7 @@
         -1.2120120130717371
       ],
       "strike_joint7_rad": -0.831208606492107,
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098"
+      "scene_signature": "openarm.scene.v2:13cc8d74f27f25195e7f77542eefaa980898866d57ffd4f7147a0bb1f203fb73"
     },
     "right/cymbal_right": {
       "arm": "right",
@@ -90,7 +90,7 @@
         1.1427725456974342
       ],
       "strike_joint7_rad": 0.8574086003061384,
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098"
+      "scene_signature": "openarm.scene.v2:13cc8d74f27f25195e7f77542eefaa980898866d57ffd4f7147a0bb1f203fb73"
     },
     "left/snare": {
       "arm": "left",
@@ -105,7 +105,7 @@
         -1.251866334335685
       ],
       "strike_joint7_rad": -0.8194251880373014,
-      "scene_signature": "573f28bb794489587876aa0acd3b49f1bb4a2fced39b16d820a2f5cd44375098"
+      "scene_signature": "openarm.scene.v2:13cc8d74f27f25195e7f77542eefaa980898866d57ffd4f7147a0bb1f203fb73"
     }
   }
 }

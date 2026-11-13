@@ -76,7 +76,8 @@ def rollout(env, output, seed=800000, command=None, video=False, reset_options=N
                 controller="native_reference_teacher" if command is None else "learned_actor",
                 controller_label=controller_label,
                 policy_uses_reference_trajectory=command is None or not env.score_only,
-                intensity_control="measured_velocity_calibration" if env.velocity_calibration else "intensity_reward_disabled")
+                intensity_control="fixed_nominal_reference_speed" if command is None else "learned_actor",
+                intensity_feedback="measured_speed_to_midi_calibration" if env.velocity_calibration else "intensity_reward_disabled")
     if video:
         if contact_audio:
             add_contact_audio(output, info["hits"], env.reference.preroll-env.started, env.elapsed-env.started, backing)
@@ -91,6 +92,20 @@ def rollout(env, output, seed=800000, command=None, video=False, reset_options=N
     (output / "score.json").write_text(json.dumps(env.score.document(), indent=2))
     (output / "reference.json").write_text(json.dumps(env.reference.document(), indent=2))
     return info
+
+
+def reference_playback_score_only(args) -> bool:
+    """Command path for this performance.
+
+    Without an actor, the reference teacher plays the score through the score-only
+    command path: the same path `rhythmic_references` qualifies strokes under and
+    that `ReferenceRuntime` sends to hardware. The trajectory-input path rate-limits
+    absolute joint targets to 120 rad/s^2 for learned residual actors. Compact music
+    strokes lift the wrist far faster than that, so the limited target lags and then
+    overshoots the ready pose after an isolated hit, tripping the 0.2 rad tracking
+    stop. An actor keeps the input schema it was trained with.
+    """
+    return args.score_only or args.actor is None
 
 
 @budgeted("openarm_rl.music.perform")
@@ -110,6 +125,11 @@ def main():
     parser.add_argument("--seed", type=int, default=800000)
     parser.add_argument("--domain-range", type=float, default=0.)
     parser.add_argument("--position-range", type=float, default=0.)
+    parser.add_argument("--height-offset-m", type=float, default=0.)
+    parser.add_argument("--contact-stiffness-scale", type=float, default=1.)
+    parser.add_argument("--contact-damping-scale", type=float, default=1.)
+    parser.add_argument("--gain-scale", type=float, default=1.)
+    parser.add_argument("--velocity-calibration", type=Path, help="Measured speed-to-MIDI calibration JSON")
     parser.add_argument("--video", action="store_true")
     parser.add_argument("--contact-audio", action="store_true")
     parser.add_argument("--backing-kick", action="store_true", help="Mix the source MIDI foot notes under the contact audio; the video labels them as not played")
@@ -136,14 +156,20 @@ def main():
     (args.output/"preflight.json").write_text(json.dumps(preflight, indent=2))
     if not preflight["executable"]:
         raise RuntimeError(f"MIDI cannot be scheduled; inspect {args.output/'preflight.json'}")
+    score_only = reference_playback_score_only(args)
     with ExitStack() as resources:
         if args.xvfb:
             display = NativeDisplay(args.xvfb, args.output / "display")
             resources.callback(display.close)
         env = resources.enter_context(RhythmicDrummingEnv(args.scene_directory, args.profiles, midi,
                                                         mapping=args.mapping, tempo_scale=args.tempo_scale,
-                                                        score_only=args.score_only,
+                                                        score_only=score_only,
                                                         domain_range=args.domain_range, position_range=args.position_range,
+                                                        height_offset_m=args.height_offset_m,
+                                                        contact_stiffness_scale=args.contact_stiffness_scale,
+                                                        contact_damping_scale=args.contact_damping_scale,
+                                                        gain_scale=args.gain_scale,
+                                                        velocity_calibration=args.velocity_calibration,
                                                         render_mode="rgb_array" if args.video else None, camera=args.camera))
         command = None
         label, manifest = None, None

@@ -33,9 +33,10 @@ def perform_once(job):
             runtime.begin(q, dq, sampled_at, env.elapsed)
             while env.active:
                 sampled_at, q, dq = env.sensor_cache
-                if runtime.step(q, dq, sampled_at, env.elapsed) is None:
+                command = runtime.step(q, dq, sampled_at, env.elapsed)
+                if command is None:
                     break
-                _, _, _, _, info = env.step(runtime.last_action)
+                _, _, _, _, info = env.step_command(*command, target_position=runtime.previous_target)
         except RuntimeError as error:
             failure = str(error)
         report = env.matcher.report(detailed=True)
@@ -50,7 +51,11 @@ def perform_once(job):
 
 
 def judge(runs):
-    return all(run["is_success"] and run["completed"] and run["failure"] is None for run in runs if run["required"])
+    required = [run for run in runs if run.get("required")]
+    conditions = {run.get("condition") for run in required}
+    return ({name for name, _, _ in REQUIRED} <= conditions and
+            all(run.get("is_success") and run.get("completed") and run.get("failure") is None
+                and not run.get("unsafe_contact", False) for run in required))
 
 
 def summarize(runs):
@@ -65,6 +70,10 @@ def summarize(runs):
 
 
 def rehearse(scene_directory, profiles, midi, mapping=None, tempo_scale=1., output=None, seeds=8, sweep=True, workers=6):
+    if not isinstance(seeds, int) or isinstance(seeds, bool) or seeds <= 0:
+        raise ValueError("Rehearsal seeds must be a positive integer")
+    if not isinstance(workers, int) or isinstance(workers, bool) or workers <= 0:
+        raise ValueError("Rehearsal workers must be a positive integer")
     scene_directory, profiles, midi = str(Path(scene_directory).resolve()), str(Path(profiles).resolve()), str(Path(midi).resolve())
     mapping = str(Path(CANONICAL_MAPPING if mapping is None else mapping).resolve())
     jobs = [("nominal", True, 0., 0., 700000, scene_directory, profiles, midi, mapping, tempo_scale)]
@@ -103,6 +112,8 @@ def main():
     parser.add_argument("--workers", type=int, default=6)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    if args.seeds <= 0 or args.workers <= 0:
+        parser.error("--seeds and --workers must be positive integers")
     args.output.mkdir(parents=True, exist_ok=False)
     midi, mapping, tempo = args.midi, args.mapping, args.tempo_scale
     if args.arrange:
