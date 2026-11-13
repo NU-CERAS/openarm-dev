@@ -104,8 +104,11 @@ class ReferenceRuntime(ScoreRuntime):
     """Plays the compiled reference with no learned policy, so every command is known before the robot moves."""
     @classmethod
     def from_rehearsal(cls, path):
+        from ..music.rehearse import judge
+
         report = json.loads(Path(path).read_text())
-        if report["schema"] != "openarm.midi_rehearsal.v1" or not report["passed"]:
+        if (report["schema"] != "openarm.midi_rehearsal.v1" or not report["passed"]
+                or not judge(report.get("runs", []))):
             raise ValueError("MIDI rehearsal did not pass")
         files = report["inputs"]
         if hashlib.sha256(Path(files["midi"]).read_bytes()).hexdigest() != report["midi_sha256"]:
@@ -188,4 +191,5 @@ class RhythmActorRuntime(ScoreRuntime):
             motor, velocity = self.servo.position_target(target, q), rate
         else:
             motor = self.reference.motor_target(elapsed, q, self.servo)+target-reference
+        motor = np.clip(motor, c.bounds[:, 0], c.bounds[:, 1])
         return target, rate, motor, velocity, action

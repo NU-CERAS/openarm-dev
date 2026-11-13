@@ -133,6 +133,7 @@ class HardwareBoundaryTests(unittest.TestCase):
         hw.arm = MagicMock()
         hw.component = MagicMock()
         hw.motors = [MagicMock() for _ in hw.cfg['joints']]
+        hw.component.get_motors.return_value = hw.motors
         for motor in hw.motors:
             motor.is_enabled.return_value = False
         hw.component.get_motors.return_value = hw.motors

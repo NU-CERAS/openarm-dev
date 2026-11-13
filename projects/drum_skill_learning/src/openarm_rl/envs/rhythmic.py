@@ -25,7 +25,8 @@ class RhythmicDrummingEnv(gym.Env):
 
     def __init__(self, scene_directory, profiles, midi_file, mapping=None, tempo_scale=1.,
                  domain_range=0., position_range=0., segment_seconds=None, render_mode=None,
-                 score_only=False, velocity_calibration=None, force_penalty=None, source=None, camera="side"):
+                 score_only=False, velocity_calibration=None, force_penalty=None, source=None, camera="side",
+                 height_offset_m=0., contact_stiffness_scale=1., contact_damping_scale=1., gain_scale=1.):
         if not 0 <= domain_range <= .2 or not 0 <= position_range <= .05:
             raise ValueError("Invalid rhythmic domain randomization ranges")
         if segment_seconds is not None and segment_seconds <= .5:
@@ -34,6 +35,16 @@ class RhythmicDrummingEnv(gym.Env):
             raise ValueError("Unsupported rhythm rendering mode")
         if camera not in CAMERAS:
             raise ValueError("Unsupported rhythm camera")
+        perturbations = np.asarray([height_offset_m, contact_stiffness_scale, contact_damping_scale, gain_scale], dtype=float)
+        if not np.isfinite(perturbations).all() or not -.05 <= height_offset_m <= .05:
+            raise ValueError("Drum height offset must be finite and within +/-0.05 m")
+        if not .25 <= contact_stiffness_scale <= 4. or not .25 <= contact_damping_scale <= 4.:
+            raise ValueError("Contact stiffness and damping scales must lie between 0.25 and 4")
+        if not .5 <= gain_scale <= 1.5:
+            raise ValueError("Servo gain scale must lie between 0.5 and 1.5")
+        self.height_offset_m = float(height_offset_m)
+        self.contact_stiffness_scale, self.contact_damping_scale = float(contact_stiffness_scale), float(contact_damping_scale)
+        self.gain_scale = float(gain_scale)
         self.camera = CAMERAS[camera]
         self.score_only = bool(score_only)
         self.force_penalty = (.05 if self.score_only else 0.) if force_penalty is None else float(force_penalty)
@@ -68,9 +79,11 @@ class RhythmicDrummingEnv(gym.Env):
             self.nominal_mass, self.nominal_inertia = self.model.body_mass.copy(), self.model.body_inertia.copy()
             self.nominal_friction, self.nominal_geom = self.model.geom_friction.copy(), self.model.geom_pos.copy()
             self.nominal_sites = self.model.site_pos.copy()
+            self.nominal_solref = self.model.geom_solref.copy()
         self.nominal_mass, self.nominal_inertia = origin.nominal_mass, origin.nominal_inertia
         self.nominal_friction, self.nominal_geom = origin.nominal_friction, origin.nominal_geom
         self.nominal_sites = origin.nominal_sites
+        self.nominal_solref = origin.nominal_solref
         prefixes = tuple(s["name"]+"_" for s in self.scene["scene"]["surfaces"])
         self.kit_geoms = [i for i in range(self.model.ngeom) if self.model.geom_bodyid[i] == 0 and
                           self.model.geom(i).name.startswith(("kit_", "stand_", *prefixes))]
@@ -123,19 +136,30 @@ class RhythmicDrummingEnv(gym.Env):
         self.model.geom_friction[:] = self.nominal_friction
         self.model.geom_pos[:] = self.nominal_geom
         self.model.site_pos[:] = self.nominal_sites
+        self.model.geom_solref[:] = self.nominal_solref
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
         if options:
             raise ValueError("Use explicit score and domain configuration")
         self.parameters = self.np_random.uniform(1-self.domain_range, 1+self.domain_range, 3)
-        self.shift = np.r_[self.np_random.uniform(-self.position_range, self.position_range, 2), 0.]
+        self.parameters[2] *= self.gain_scale
+        self.shift = np.r_[self.np_random.uniform(-self.position_range, self.position_range, 2), self.height_offset_m]
         self.restore_nominal()
         self.model.body_mass[:] *= self.parameters[0]
         self.model.body_inertia[:] *= self.parameters[0]
         self.model.geom_friction[:] *= self.parameters[1]
         self.model.geom_pos[self.kit_geoms] += self.shift
         self.model.site_pos[self.kit_sites] += self.shift
+        for head in self.heads:
+            solref = self.model.geom_solref[head]
+            if np.all(solref > 0):
+                # MuJoCo: damping ~ 1/timeconst; stiffness ~ 1/(timeconst*dampratio)^2.
+                # Keep its positive-format contact mixing and timestep safeguards intact.
+                solref[0] /= self.contact_damping_scale
+                solref[1] *= self.contact_damping_scale/np.sqrt(self.contact_stiffness_scale)
+            else:
+                solref *= [self.contact_stiffness_scale, self.contact_damping_scale]
         mujoco.mj_resetData(self.model, self.data)
         mujoco.mj_setConst(self.model, self.data)
         c = self.controller
@@ -235,6 +259,8 @@ class RhythmicDrummingEnv(gym.Env):
                 "score_time_s": self.elapsed-self.reference.preroll, "preroll_s": self.reference.preroll,
                 "segment_start_s": self.started, "segment_end_s": self.end,
                 "parameters": self.parameters.tolist(), "kit_shift_m": self.shift.tolist(),
+                "contact_stiffness_scale": self.contact_stiffness_scale,
+                "contact_damping_scale": self.contact_damping_scale, "gain_scale": self.gain_scale,
                 "actor_trajectory_inputs": not self.score_only,
                 "motor_reference": not self.score_only,
                 "velocity_mae": float(np.mean(self.velocity_errors)) if self.velocity_errors else None,
@@ -254,11 +280,6 @@ class RhythmicDrummingEnv(gym.Env):
         velocity = np.clip((desired-self.previous_target)/self.period, -.8*c.velocity, .8*c.velocity)
         velocity = np.clip(velocity, self.previous_velocity-120*self.period, self.previous_velocity+120*self.period)
         target = np.clip(self.previous_target+velocity*self.period, bounds[:, 0], bounds[:, 1])
-        self.previous_target, self.previous_velocity = target.copy(), velocity.copy()
-        previous_action = self.last_action.copy()
-        self.last_action = action.copy()
-        before_correct, before_extra = len(self.matcher.matched), len(self.matcher.actual)-len(self.matcher.matched)
-        energy, intensity_cost, force_cost = 0., 0., 0.
         measured, _ = self.encoders()
         if self.score_only:
             applied = self.servo.position_target(target, measured)
@@ -266,6 +287,39 @@ class RhythmicDrummingEnv(gym.Env):
         else:
             nominal, nominal_velocity = self.reference.sample(self.elapsed)
             applied = self.reference.motor_target(self.elapsed, measured, self.servo) + target-nominal
+        applied = np.clip(applied, bounds[:, 0], bounds[:, 1])
+        return self._execute_command(applied, nominal_velocity, target, velocity, action)
+
+    def step_command(self, motor_position, motor_velocity, target_position=None):
+        """Execute an already bounded command without gravity offsets or a second rate limiter.
+
+        Positions/velocities are fourteen joint values in rad/rad/s. ``target_position``
+        is the geometric target before gravity compensation, used for tracking checks
+        and observation history; it defaults to the motor position. Torque limits,
+        contact checks, delayed sensors, and rewards are shared with ``step``.
+        """
+        if not self.active:
+            raise RuntimeError("Reset before executing a rhythm")
+        applied, velocity = np.asarray(motor_position, dtype=float), np.asarray(motor_velocity, dtype=float)
+        target = applied if target_position is None else np.asarray(target_position, dtype=float)
+        if any(value.shape != (14,) or not np.isfinite(value).all() for value in (applied, velocity, target)):
+            raise ValueError("Rhythm commands require fourteen finite joint positions and velocities")
+        c = self.controller
+        if any(np.any(value < c.bounds[:, 0]) or np.any(value > c.bounds[:, 1]) for value in (applied, target)):
+            raise ValueError("Rhythm command positions exceed model limits")
+        if np.any(np.abs(velocity) > c.velocity):
+            raise ValueError("Rhythm command velocities exceed model limits")
+        return self._execute_command(applied.copy(), velocity.copy(), target.copy(), velocity.copy(), self.encode(target))
+
+    def _execute_command(self, applied, nominal_velocity, target, target_velocity, action):
+        c = self.controller
+        state_time = self.elapsed
+        previous_q, previous_dq = self.data.qpos[c.q].copy(), self.data.qvel[c.v].copy()
+        self.previous_target, self.previous_velocity = target.copy(), target_velocity.copy()
+        previous_action = self.last_action.copy()
+        self.last_action = action.copy()
+        before_correct, before_extra = len(self.matcher.matched), len(self.matcher.actual)-len(self.matcher.matched)
+        energy, intensity_cost, force_cost = 0., 0., 0.
         for _ in range(round(self.period/self.model.opt.timestep)):
             torque = c.kp*self.parameters[2]*(applied-self.data.qpos[c.q])+c.kd*np.sqrt(self.parameters[2])*(nominal_velocity-self.data.qvel[c.v])
             self.data.ctrl[c.a] = np.clip(torque, -c.effort, c.effort)
@@ -365,8 +419,13 @@ class RhythmicDrummingEnv(gym.Env):
         self.history.append(np.r_[measured, speed, self.last_action].astype(np.float32))
         self.history = self.history[-4:]
         self.active = self.elapsed < self.end and not self.unsafe
-        self.trace.append({"performance_time_s": self.elapsed, "joint_target_rad": target.tolist(),
+        self.trace.append({"state_time_s": state_time, "performance_time_s": self.elapsed,
+                           "previous_measured_joints_rad": previous_q.tolist(),
+                           "previous_measured_velocity_rad_s": previous_dq.tolist(),
+                           "joint_target_rad": target.tolist(),
                            "motor_target_rad": applied.tolist(), "measured_joints_rad": self.data.qpos[c.q].tolist(),
+                           "motor_velocity_rad_s": nominal_velocity.tolist(),
+                           "measured_velocity_rad_s": self.data.qvel[c.v].tolist(),
                            "encoder_age_s": self.elapsed-self.sensor_cache[0],
                            "action": action.tolist()})
         return self.observation(), float(reward), not self.active, False, self.info()

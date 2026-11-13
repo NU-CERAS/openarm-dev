@@ -2,6 +2,7 @@ import argparse
 import fcntl
 from functools import wraps
 import json
+import math
 import os
 import signal
 import subprocess
@@ -15,6 +16,14 @@ from .paths import RUNS
 
 
 GIB = 1024**3
+
+
+def ram_reserve_bytes():
+    """Allow an explicit per-job RAM reserve, including zero, on smaller machines."""
+    value = float(os.environ.get("OPENARM_RAM_RESERVE_GIB", "8"))
+    if not math.isfinite(value) or value < 0:
+        raise ValueError("OPENARM_RAM_RESERVE_GIB must be finite and nonnegative")
+    return int(value * GIB)
 
 
 def monitored_process(command, environment, memory):
@@ -48,8 +57,10 @@ def monitored_process(command, environment, memory):
 
 
 def check_resources():
-    if psutil.virtual_memory().available < 8 * GIB:
-        raise MemoryError("Stopping this compute task to preserve 8 GiB of available system memory")
+    reserve = ram_reserve_bytes()
+    if psutil.virtual_memory().available < reserve:
+        raise MemoryError(f"Stopping this compute task to preserve {reserve / GIB:g} GiB of available system memory "
+                          "(set OPENARM_RAM_RESERVE_GIB to override)")
     torch = sys.modules.get("torch")
     if torch is not None and torch.cuda.is_initialized():
         free, _ = torch.cuda.mem_get_info()
@@ -94,7 +105,10 @@ def main():
     with (RUNS / "compute.lock").open("a+") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         check_resources()
-        memory = min(14 * GIB, psutil.virtual_memory().available - 8 * GIB)
+        reserve = ram_reserve_bytes()
+        memory = min(14 * GIB, psutil.virtual_memory().available - reserve)
+        if memory <= 0:
+            raise MemoryError("No RAM remains for this compute job after its configured reserve")
         cores = min(8, max(1, (psutil.cpu_count() or 1) // 2))
         unit = f"openarm-compute-{uuid.uuid4().hex[:8]}"
         environment = dict(os.environ, OPENARM_COMPUTE_GUARDED="1", OMP_NUM_THREADS="1",
@@ -111,7 +125,7 @@ def main():
                    "-p", "MemorySwapMax=0", "-p", f"CPUQuota={cores * 100}%",
                    "/usr/bin/nice", "-n", "10", *args.command]
         state = {"active": True, "pid": os.getpid(), "unit": unit, "command": args.command,
-                 "memory_limit_bytes": memory, "cpu_cores": cores, "system_memory_reserve_bytes": 8 * GIB,
+                 "memory_limit_bytes": memory, "cpu_cores": cores, "system_memory_reserve_bytes": reserve,
                  "gpu_memory_reserve_bytes": 4 * GIB}
         status = RUNS / "active_compute.json"
         status.write_text(json.dumps(state, indent=2) + "\n")

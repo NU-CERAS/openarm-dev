@@ -21,15 +21,41 @@ def require_drum_arm(arm, drum):
         raise ValueError(f'{drum} belongs to {DRUM_ARMS.get(drum, "no stick")} arm')
 
 
-def scene_signature(scene):
+def legacy_scene_signature(scene):
+    """Original fingerprint, retained only to read an exact same-platform save."""
     files = [SOURCE, CONFIG, CONFIG.with_name('scene.json'), CONFIG.with_name('contact.json')]
     payload = b''.join(p.read_bytes() for p in files)+json.dumps(scene['surfaces'], sort_keys=True).encode()
     return hashlib.sha256(payload).hexdigest()
 
 
+def scene_signature(scene):
+    """Portable identity: exact source bytes, geometry rounded to 12 decimal places.
+
+    LAPACK implementations can change fitted normal components around 1e-16.
+    These differences must not invalidate a taught pose. Version the signature
+    rather than silently interpreting an old digest with the new algorithm.
+    """
+    def rounded(value):
+        if isinstance(value, dict):
+            return {key: rounded(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [rounded(item) for item in value]
+        if isinstance(value, (float, np.floating)):
+            result = round(float(value), 12)
+            return 0. if result == 0 else result
+        return value
+
+    files = [SOURCE, CONFIG, CONFIG.with_name('scene.json'), CONFIG.with_name('contact.json')]
+    identity = {'sources_sha256': [hashlib.sha256(path.read_bytes()).hexdigest() for path in files],
+                'surfaces': rounded(scene['surfaces'])}
+    payload = json.dumps(identity, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
+    return 'openarm.scene.v2:'+hashlib.sha256(payload).hexdigest()
+
+
 class PoseStore:
     def __init__(self, model, robot, scene, path=PRESETS):
         self.path, self.signature = Path(path), scene_signature(scene)
+        self.legacy_signature = legacy_scene_signature(scene)
         self.controller = HoldController(model, robot)
         self.names = {s['name'] for s in scene['surfaces']}
         self.document = {'version': 1, 'presets': {}}
@@ -57,7 +83,7 @@ class PoseStore:
             raise ValueError('No saved ready pose for this arm/drum')
         if item.get('arm') != arm or item.get('drum') != drum:
             raise ValueError('Saved preset arm/drum does not match its key')
-        if item['scene_signature'] != self.signature:
+        if item['scene_signature'] not in (self.signature, self.legacy_signature):
             raise ValueError('Robot or scene changed. Re-teach this preset before playback.')
         self.validate(arm, item['ready_rad'])
         if complete:

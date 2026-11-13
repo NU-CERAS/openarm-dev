@@ -259,6 +259,12 @@ exercise. Supply exactly one of `--midi` and `--example`.
 compiler rejects infeasible stroke intervals and transfers with the affected
 score time, and it does not remove notes or change tempo.
 
+Without `--actor`, playback uses the score-only command path that
+`rhythmic_references` qualifies strokes under and `ReferenceRuntime` sends to
+hardware. Compact rhythmic strokes exceed the trajectory-input path's
+120 rad/s² target-acceleration limit; that limiter overshoots the ready pose after
+an isolated hit and trips the 0.2 rad tracking stop.
+
 ## Arrange a complete drum part
 
 Real drum parts contain kick and pedal notes, articulations and more hits than two
